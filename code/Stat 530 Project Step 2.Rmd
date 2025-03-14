@@ -1,0 +1,1015 @@
+---
+title: "Stat 520 Project Part 2"
+author: "Yiquan Xiao"
+date: "2024-03-21"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r import libraries, echo=FALSE}
+# import libraries
+library(vcd)
+library(vcdExtra)
+library(DescTools)
+```
+
+
+# Create Dataset
+```{r prepare data}
+# data
+food_choice_data <- c(
+  7, 1, 0, 0, 5,
+  4, 0, 0, 1, 2,
+  16, 3, 2, 2, 3,
+  3, 0, 1, 2, 3,
+  2, 2, 0, 0, 1,
+  13, 7, 6, 0, 0,
+  3, 9, 1, 0, 2,
+  0, 1, 0, 1, 0,
+  3, 7, 1, 0, 1,
+  8, 6, 6, 3, 5,
+  2, 4, 1, 1, 4,
+  0, 1, 0, 0, 0,
+  13, 10, 0, 2, 2,
+  9, 0, 0, 1, 2,
+  3, 9, 1, 0, 1,
+  8, 1, 0, 0, 1
+)
+
+# variables and corresponding levels
+Lake <- c("Hancock", "Oklawaha", "Trafford", "George")
+Gender <- c("Male", "Female")
+Size <- c("<= 2.3", "> 2.3")
+Primary_Food_Choice <- c("Fish", "Invertebrate", "Reptile", "Bird", "Other")
+
+# make it 4d array
+food_choice_array <- array(food_choice_data, dim = c(4, 2, 2, 5),
+                           dimnames = list(Lake = Lake,
+                                           Gender = Gender,
+                                           Size = Size,
+                                           Primary_Food_Choice = Primary_Food_Choice))
+
+# make 4-way table
+food_choice_table <- as.table(food_choice_array)
+ftable(food_choice_table)
+```
+
+
+# Marginal Distribution of Primary Food Choice
+```{r}
+li_data <- c("L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", 
+             "L9", "L10", "L11", "L12", "L13", "L14", "L15", "L16")
+
+# make it 4d array
+li_array <- array(li_data, dim = c(4, 2, 2),
+                  dimnames = list(Lake = Lake,
+                                  Gender = Gender,
+                                  Size = Size))
+
+# make 4-way table
+li_table <- as.table(li_array)
+ftable(li_table)
+```
+
+
+```{r}
+generate_ltable <- function(lake_choice, gender_choice, size_choice) {
+  # Initialize an empty list to store the frequency tables for each food choice
+  l_frequency_tables <- list()
+  
+  # Loop through each primary food choice to construct the frequency table
+  for (food_choice in dimnames(food_choice_table)$Primary_Food_Choice) {
+    # Extract the sub-table for the current food choice
+    food_choice_subtable <- food_choice_table[,,,food_choice]
+    
+    # Initialize a vector to store counts of L = 0, 1, 2, 3
+    # l_counts <- integer(4)
+    l_counts <- rep(0, 4)
+    
+    # Calculate L for each possible combination of Lake, Gender, and Size
+    for (lake in 1:length(dimnames(food_choice_subtable)$Lake)) {
+      for (gender in 1:length(dimnames(food_choice_subtable)$Gender)) {
+        for (size in 1:length(dimnames(food_choice_subtable)$Size)) {
+          # Calculate L based on conditions 
+          l_value <- 0
+          if (dimnames(food_choice_subtable)$Lake[lake] == lake_choice) l_value <- l_value + 1
+          if (dimnames(food_choice_subtable)$Gender[gender] == gender_choice) l_value <- l_value + 1
+          if (dimnames(food_choice_subtable)$Size[size] == size_choice) l_value <- l_value + 1
+          
+          # Update the count of L in the vector
+          l_counts[l_value + 1] <- l_counts[l_value + 1] + 
+            food_choice_subtable[lake, gender, size]
+        }
+      }
+    }
+    
+    # Store the frequency table for the current food choice in the list
+    l_frequency_tables[[food_choice]] <- as.table(setNames(l_counts, 0:3))
+  }
+  return(l_frequency_tables)
+}
+```
+
+
+```{r}
+analysis_ltable <- function(l_frequency_tables, number_of_l) {
+  for (food_choice in dimnames(food_choice_table)$Primary_Food_Choice) {
+    cat(food_choice, "\n")
+    for (distribution in c("binomial", "poisson", "nbinomial")) {
+      
+      if (distribution == "binomial") {
+        l.goodfit <- goodfit(l_frequency_tables[[food_choice]], 
+                              type = distribution, par = list(size = 3))
+      }
+      else{
+        l.goodfit <- goodfit(l_frequency_tables[[food_choice]], 
+                              type = distribution)
+      }
+      
+      summary(l.goodfit)
+      
+      plot_title = sprintf("Hanging Rootogram for fitting L%s with %s \n when Primary Food Type = %s", 
+                           number_of_l, distribution, food_choice)
+      
+      # Hanging Rootgram
+      plot(l.goodfit, type = "hanging", shade = TRUE, 
+           main = plot_title, main_gp = gpar(fontsize = 10))
+      
+      plot_title = sprintf("Binomialness plot for fiiting L%s with %s \n when Primary Food Type = %s", 
+                           number_of_l, distribution, food_choice)
+      
+      # Generalized Distribution plot
+      if (distribution == "binomial") {
+        distplot(l_frequency_tables[[food_choice]], type = distribution, size = 3,
+                 main = plot_title,
+                 xlab = "Number of satisfied conditions")
+      }
+      else{
+        distplot(l_frequency_tables[[food_choice]], type = distribution,
+                 main = plot_title,
+                 xlab = "Number of satisfied conditions")
+      }
+      
+    }
+    cat("---------------------------------------------------------------\n")
+  }
+}
+```
+
+
+```{r}
+# the degree of freedom in the test above (when Primary Food Type = Bird above) is 
+# different from others because there is a "0" in the table
+
+test_table <- as.table(setNames(c(1, 2, 3, 4), 0:3))
+test_table2 <- as.table(setNames(c(1, 0, 3, 4), 0:3))
+
+summary(goodfit(test_table, type = "nbinomial"))
+summary(goodfit(test_table2, type = "nbinomial"))
+```
+
+
+```{r L1}
+l1_frequency_tables <- generate_ltable("Hancock", "Male", "<= 2.3")
+l1_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l1_frequency_tables, 1)
+```
+
+
+```{r L2}
+l2_frequency_tables <- generate_ltable("Oklawaha", "Male", "<= 2.3")
+l2_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l2_frequency_tables, 2)
+```
+
+
+```{r L3}
+l3_frequency_tables <- generate_ltable("Trafford", "Male", "<= 2.3")
+l3_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l3_frequency_tables, 3)
+```
+
+
+```{r L4}
+l4_frequency_tables <- generate_ltable("George", "Male", "<= 2.3")
+l4_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l4_frequency_tables, 4)
+```
+
+
+```{r L5}
+l5_frequency_tables <- generate_ltable("Hancock", "Female", "<= 2.3")
+l5_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l5_frequency_tables, 5)
+```
+
+
+```{r L6}
+l6_frequency_tables <- generate_ltable("Oklawaha", "Female", "<= 2.3")
+l6_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l6_frequency_tables, 6)
+```
+
+
+```{r L7}
+l7_frequency_tables <- generate_ltable("Trafford", "Female", "<= 2.3")
+l7_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l7_frequency_tables, 7)
+```
+
+
+```{r L8}
+l8_frequency_tables <- generate_ltable("George", "Female", "<= 2.3")
+l8_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l8_frequency_tables, 8)
+```
+
+
+```{r L9}
+l9_frequency_tables <- generate_ltable("Hancock", "Male", "> 2.3")
+l9_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l9_frequency_tables, 9)
+```
+
+
+```{r L10}
+l10_frequency_tables <- generate_ltable("Oklawaha", "Male", "> 2.3")
+l10_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l10_frequency_tables, 10)
+```
+
+
+```{r L11}
+l11_frequency_tables <- generate_ltable("Trafford", "Male", "> 2.3")
+l11_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l11_frequency_tables, 11)
+```
+
+
+```{r L12}
+l12_frequency_tables <- generate_ltable("George", "Male", "> 2.3")
+l12_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l12_frequency_tables, 12)
+```
+
+
+```{r L13}
+l13_frequency_tables <- generate_ltable("Hancock", "Female", "> 2.3")
+l13_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l13_frequency_tables, 13)
+```
+
+
+```{r L14}
+l14_frequency_tables <- generate_ltable("Oklawaha", "Female", "> 2.3")
+l14_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l14_frequency_tables, 14)
+```
+
+
+```{r L15}
+l15_frequency_tables <- generate_ltable("Trafford", "Female", "> 2.3")
+l15_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l15_frequency_tables, 15)
+```
+
+
+```{r L16}
+l16_frequency_tables <- generate_ltable("George", "Female", "> 2.3")
+l16_frequency_tables
+
+cat("===================================================================\n")
+
+analysis_ltable(l16_frequency_tables, 16)
+```
+
+
+```{r}
+# the degree of freedom in the test above (when Primary Food Type = Bird above) is 
+# different from others because there is a "0" in the table
+
+test_table <- as.table(setNames(c(1, 2, 3, 4), 0:3))
+test_table2 <- as.table(setNames(c(1, 0, 3, 4), 0:3))
+
+summary(goodfit(test_table, type = "nbinomial"))
+summary(goodfit(test_table2, type = "nbinomial"))
+```
+
+
+# Stratified Analysis
+```{r measures tables}
+Measures <- c("ContCoef", "ContCoefLB", "ContCoefUB", 
+              "CramerV", "CramerVLB", "CramerVUB", 
+              "Lambda", "LambdaLB", "LambdaUB")
+
+# create tables to store measures 
+# name of the table follow pattern: IndependentVariable_BackgroundVariable_table
+lake_gender_table <- as.table(array(rep(0, 2*9), dim = c(2, 9), 
+                                    dimnames = list("Gender" = Gender, 
+                                                    "Measures" = Measures)))
+
+lake_size_table <- as.table(array(rep(0, 2*9), dim = c(2, 9), 
+                                  dimnames = list("Size" = Size, 
+                                                  "Measures" = Measures)))
+
+gender_lake_table <- as.table(array(rep(0, 4*9), dim = c(4, 9), 
+                                    dimnames = list("Lake" = Lake, 
+                                                    "Measures" = Measures)))
+
+gender_size_table <- as.table(array(rep(0, 2*9), dim = c(2, 9), 
+                                    dimnames = list("Size" = Size, 
+                                                    "Measures" = Measures)))
+
+size_lake_table <- as.table(array(rep(0, 4*9), dim = c(4, 9), 
+                                  dimnames = list("Lake" = Lake, 
+                                                  "Measures" = Measures)))
+
+size_gender_table <- as.table(array(rep(0, 2*9), dim = c(2, 9), 
+                                    dimnames = list("Gender" = Gender, 
+                                                    "Measures" = Measures)))
+```
+
+
+## Independent Var: Lake; Background Var: Gender
+```{r Lake by Gender}
+
+food_choice_table_LbyG <- 
+  margin.table(food_choice_table, c("Lake", "Primary_Food_Choice", "Gender"))
+
+# X^2 & G^2 tests
+print(assocstats(food_choice_table_LbyG))
+
+# Generalized Cochran-Mantel-Haenszel (CMH) tests
+print(CMHtest(food_choice_table_LbyG))
+
+for (gender in dimnames(food_choice_table_LbyG)$Gender){
+  LbyG <- food_choice_table_LbyG[,,gender]
+  
+  # Point Estimate of Contingency Coefficient
+  lake_gender_table[gender, "ContCoef"] = round(ContCoef(LbyG), digits = 4)
+  
+  # Point Estimate of Cramer’s V
+  lake_gender_table[gender, "CramerV"] = round(CramerV(LbyG), digits = 4)
+  
+  # Point Estimate of Goodman Kruskal’s Lambda
+  lake_gender_table[gender, "Lambda"] = round(Lambda(LbyG, direction="row"), digits = 4)
+  
+  d.frm <- Untable(LbyG)
+  B <- 1000
+  idx <- matrix(sample(nrow(d.frm), size=nrow(d.frm) * B, replace=TRUE), ncol=B, byrow=FALSE)
+  
+  # code for 95% bootstrap confidence interval for ContCoef
+  v_ContCoef <- apply(idx, 2, function(x) ContCoef(d.frm[x,1], d.frm[x,2]))
+  v_ContCoef_CI <- quantile(v_ContCoef, probs=c(0.025,0.975), na.rm = TRUE)
+  lake_gender_table[gender, "ContCoefLB"] = round(v_ContCoef_CI[[1]], digits = 4)
+  lake_gender_table[gender, "ContCoefUB"] = round(v_ContCoef_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for CramerV
+  v_CramerV <- apply(idx, 2, function(x) CramerV(d.frm[x,1], d.frm[x,2]))
+  v_CramerV_CI <- quantile(v_CramerV, probs=c(0.025,0.975), na.rm = TRUE)
+  lake_gender_table[gender, "CramerVLB"] = round(v_CramerV_CI[[1]], digits = 4)
+  lake_gender_table[gender, "CramerVUB"] = round(v_CramerV_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for Lambda
+  v_Lambda <- apply(idx, 2, function(x) Lambda(d.frm[x,1], d.frm[x,2], direction="row"))
+  v_Lambda_CI <- quantile(v_Lambda, probs=c(0.025,0.975), na.rm = TRUE)
+  lake_gender_table[gender, "LambdaLB"] = round(v_Lambda_CI[[1]], digits = 4)
+  lake_gender_table[gender, "LambdaUB"] = round(v_Lambda_CI[[2]], digits = 4)
+}
+
+lake_gender_table
+```
+
+The Likelihood Ratio test, Pearson's Chi-squared test, and general test from CMHtest indicate a significant association between lake of capture and primary food type among male alligators and also female alligators, with p-values far below the typical alpha level of 0.05. For male alligotors, Contingency Coefficient and Cramer's V both indicate a moderate association between the lake of capture and primary food type. Goodman Kruskal’s Lambda suggests that knowing the lake of capture can improve the prediction of the primary food type by about 17.33%, which, while modest, is not negligible. For female alligators, the measures of association are very similar to those for males, indicating a moderate association between lake and primary food type among females. Goodman Kruskal’s Lambda for females is higher (23.68%) than for males, suggesting that lake of capture is a slightly better predictor of primary food type for female alligators than for male alligators.
+
+
+
+
+```{r Lake by Gender association, fig.width=8, fig.height=7}
+assoc(Primary_Food_Choice ~ Lake + Gender, data = food_choice_table, shade = TRUE)
+```
+
+
+## Independent Var: Lake; Background Var: Size
+```{r Lake by Size}
+
+food_choice_table_LbyS <- 
+  margin.table(food_choice_table, c("Lake", "Primary_Food_Choice", "Size"))
+
+# X^2 & G^2 tests
+print(assocstats(food_choice_table_LbyS))
+
+# Generalized Cochran-Mantel-Haenszel (CMH) tests
+print(CMHtest(food_choice_table_LbyS))
+
+for (size in dimnames(food_choice_table_LbyS)$Size){
+  LbyS <- food_choice_table_LbyS[,,size]
+  
+  # Point Estimate of Contingency Coefficient
+  lake_size_table[size, "ContCoef"] = round(ContCoef(LbyS), digits = 4)
+  
+  # Point Estimate of Cramer’s V
+  lake_size_table[size, "CramerV"] = round(CramerV(LbyS), digits = 4)
+  
+  # Point Estimate of Goodman Kruskal’s Lambda
+  lake_size_table[size, "Lambda"] = round(Lambda(LbyS, direction="row"), digits = 4)
+  
+  d.frm <- Untable(LbyS)
+  B <- 1000
+  idx <- matrix(sample(nrow(d.frm), size=nrow(d.frm) * B, replace=TRUE), ncol=B, byrow=FALSE)
+  
+  # code for 95% bootstrap confidence interval for ContCoef
+  v_ContCoef <- apply(idx, 2, function(x) ContCoef(d.frm[x,1], d.frm[x,2]))
+  v_ContCoef_CI <- quantile(v_ContCoef, probs=c(0.025,0.975), na.rm = TRUE)
+  lake_size_table[size, "ContCoefLB"] = round(v_ContCoef_CI[[1]], digits = 4)
+  lake_size_table[size, "ContCoefUB"] = round(v_ContCoef_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for CramerV
+  v_CramerV <- apply(idx, 2, function(x) CramerV(d.frm[x,1], d.frm[x,2]))
+  v_CramerV_CI <- quantile(v_CramerV, probs=c(0.025,0.975), na.rm = TRUE)
+  lake_size_table[size, "CramerVLB"] = round(v_CramerV_CI[[1]], digits = 4)
+  lake_size_table[size, "CramerVUB"] = round(v_CramerV_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for Lambda
+  v_Lambda <- apply(idx, 2, function(x) Lambda(d.frm[x,1], d.frm[x,2], direction="row"))
+  v_Lambda_CI <- quantile(v_Lambda, probs=c(0.025,0.975), na.rm = TRUE)
+  lake_size_table[size, "LambdaLB"] = round(v_Lambda_CI[[1]], digits = 4)
+  lake_size_table[size, "LambdaUB"] = round(v_Lambda_CI[[2]], digits = 4)
+}
+
+lake_size_table
+```
+
+
+```{r Lake by Size association, fig.width=8, fig.height=7}
+assoc(Primary_Food_Choice ~ Lake + Size, data = food_choice_table, shade = TRUE)
+```
+
+
+## Independent Var: Gender; Background Var: Lake
+```{r Gender by Lake}
+
+food_choice_table_GbyL <- 
+  margin.table(food_choice_table, c("Gender", "Primary_Food_Choice", "Lake"))
+
+# X^2 & G^2 tests
+print(assocstats(food_choice_table_GbyL))
+
+# Generalized Cochran-Mantel-Haenszel (CMH) tests
+print(CMHtest(food_choice_table_GbyL))
+
+for (lake in dimnames(food_choice_table_GbyL)$Lake){
+  GbyL <- food_choice_table_GbyL[,,lake]
+  
+  # Point Estimate of Contingency Coefficient
+  gender_lake_table[lake, "ContCoef"] = round(ContCoef(GbyL), digits = 4)
+  
+  # Point Estimate of Cramer’s V
+  gender_lake_table[lake, "CramerV"] = round(CramerV(GbyL), digits = 4)
+  
+  # Point Estimate of Goodman Kruskal’s Lambda
+  gender_lake_table[lake, "Lambda"] = round(Lambda(GbyL, direction="row"), digits = 4)
+  
+  d.frm <- Untable(GbyL)
+  B <- 1000
+  idx <- matrix(sample(nrow(d.frm), size=nrow(d.frm) * B, replace=TRUE), ncol=B, byrow=FALSE)
+  
+  # code for 95% bootstrap confidence interval for ContCoef
+  v_ContCoef <- apply(idx, 2, function(x) ContCoef(d.frm[x,1], d.frm[x,2]))
+  v_ContCoef_CI <- quantile(v_ContCoef, probs=c(0.025,0.975), na.rm = TRUE)
+  gender_lake_table[lake, "ContCoefLB"] = round(v_ContCoef_CI[[1]], digits = 4)
+  gender_lake_table[lake, "ContCoefUB"] = round(v_ContCoef_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for CramerV
+  v_CramerV <- apply(idx, 2, function(x) CramerV(d.frm[x,1], d.frm[x,2]))
+  v_CramerV_CI <- quantile(v_CramerV, probs=c(0.025,0.975), na.rm = TRUE)
+  gender_lake_table[lake, "CramerVLB"] = round(v_CramerV_CI[[1]], digits = 4)
+  gender_lake_table[lake, "CramerVUB"] = round(v_CramerV_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for Lambda
+  v_Lambda <- apply(idx, 2, function(x) Lambda(d.frm[x,1], d.frm[x,2], direction="row"))
+  v_Lambda_CI <- quantile(v_Lambda, probs=c(0.025,0.975), na.rm = TRUE)
+  gender_lake_table[lake, "LambdaLB"] = round(v_Lambda_CI[[1]], digits = 4)
+  gender_lake_table[lake, "LambdaUB"] = round(v_Lambda_CI[[2]], digits = 4)
+}
+
+gender_lake_table
+```
+
+
+```{r Gender by Lake association, fig.width=8, fig.height=7}
+food_choice_table_lake_abbrev <- food_choice_table
+dimnames(food_choice_table_lake_abbrev)["Lake"] <- list(c("H", "O", "T", "G"))
+assoc(Primary_Food_Choice ~ Gender + Lake, data = food_choice_table_lake_abbrev, shade = TRUE)
+```
+
+
+## Independent Var: Gender; Background Var: Size
+```{r Gender by Size}
+
+food_choice_table_GbyS <- 
+  margin.table(food_choice_table, c("Gender", "Primary_Food_Choice", "Size"))
+
+# X^2 & G^2 tests
+print(assocstats(food_choice_table_GbyS))
+
+# Generalized Cochran-Mantel-Haenszel (CMH) tests
+print(CMHtest(food_choice_table_GbyS))
+
+for (size in dimnames(food_choice_table_GbyS)$Size){
+  GbyS <- food_choice_table_GbyS[,,size]
+  
+  # Point Estimate of Contingency Coefficient
+  gender_size_table[size, "ContCoef"] = round(ContCoef(GbyS), digits = 4)
+  
+  # Point Estimate of Cramer’s V
+  gender_size_table[size, "CramerV"] = round(CramerV(GbyS), digits = 4)
+  
+  # Point Estimate of Goodman Kruskal’s Lambda
+  gender_size_table[size, "Lambda"] = round(Lambda(GbyS, direction="row"), digits = 4)
+  
+  d.frm <- Untable(GbyS)
+  B <- 1000
+  idx <- matrix(sample(nrow(d.frm), size=nrow(d.frm) * B, replace=TRUE), ncol=B, byrow=FALSE)
+  
+  # code for 95% bootstrap confidence interval for ContCoef
+  v_ContCoef <- apply(idx, 2, function(x) ContCoef(d.frm[x,1], d.frm[x,2]))
+  v_ContCoef_CI <- quantile(v_ContCoef, probs=c(0.025,0.975), na.rm = TRUE)
+  gender_size_table[size, "ContCoefLB"] = round(v_ContCoef_CI[[1]], digits = 4)
+  gender_size_table[size, "ContCoefUB"] = round(v_ContCoef_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for CramerV
+  v_CramerV <- apply(idx, 2, function(x) CramerV(d.frm[x,1], d.frm[x,2]))
+  v_CramerV_CI <- quantile(v_CramerV, probs=c(0.025,0.975), na.rm = TRUE)
+  gender_size_table[size, "CramerVLB"] = round(v_CramerV_CI[[1]], digits = 4)
+  gender_size_table[size, "CramerVUB"] = round(v_CramerV_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for Lambda
+  v_Lambda <- apply(idx, 2, function(x) Lambda(d.frm[x,1], d.frm[x,2], direction="row"))
+  v_Lambda_CI <- quantile(v_Lambda, probs=c(0.025,0.975), na.rm = TRUE)
+  gender_size_table[size, "LambdaLB"] = round(v_Lambda_CI[[1]], digits = 4)
+  gender_size_table[size, "LambdaUB"] = round(v_Lambda_CI[[2]], digits = 4)
+}
+
+gender_size_table
+```
+
+
+```{r Gender by Size association, fig.width=8, fig.height=7}
+assoc(Primary_Food_Choice ~ Gender + Size, data = food_choice_table, shade = TRUE)
+```
+
+
+## Independent Var: Size; Background Var: Lake
+```{r Size by Lake}
+
+food_choice_table_SbyL <- 
+  margin.table(food_choice_table, c("Size", "Primary_Food_Choice", "Lake"))
+
+# X^2 & G^2 tests
+print(assocstats(food_choice_table_SbyL))
+
+# Generalized Cochran-Mantel-Haenszel (CMH) tests
+print(CMHtest(food_choice_table_SbyL))
+
+for (lake in dimnames(food_choice_table_SbyL)$Lake){
+  SbyL <- food_choice_table_SbyL[,,lake]
+  
+  # Point Estimate of Contingency Coefficient
+  size_lake_table[lake, "ContCoef"] = round(ContCoef(SbyL), digits = 4)
+  
+  # Point Estimate of Cramer’s V
+  size_lake_table[lake, "CramerV"] = round(CramerV(SbyL), digits = 4)
+  
+  # Point Estimate of Goodman Kruskal’s Lambda
+  size_lake_table[lake, "Lambda"] = round(Lambda(SbyL, direction="row"), digits = 4)
+  
+  d.frm <- Untable(SbyL)
+  B <- 1000
+  idx <- matrix(sample(nrow(d.frm), size=nrow(d.frm) * B, replace=TRUE), ncol=B, byrow=FALSE)
+  
+  # code for 95% bootstrap confidence interval for ContCoef
+  v_ContCoef <- apply(idx, 2, function(x) ContCoef(d.frm[x,1], d.frm[x,2]))
+  v_ContCoef_CI <- quantile(v_ContCoef, probs=c(0.025,0.975), na.rm = TRUE)
+  size_lake_table[lake, "ContCoefLB"] = round(v_ContCoef_CI[[1]], digits = 4)
+  size_lake_table[lake, "ContCoefUB"] = round(v_ContCoef_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for CramerV
+  v_CramerV <- apply(idx, 2, function(x) CramerV(d.frm[x,1], d.frm[x,2]))
+  v_CramerV_CI <- quantile(v_CramerV, probs=c(0.025,0.975), na.rm = TRUE)
+  size_lake_table[lake, "CramerVLB"] = round(v_CramerV_CI[[1]], digits = 4)
+  size_lake_table[lake, "CramerVUB"] = round(v_CramerV_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for Lambda
+  v_Lambda <- apply(idx, 2, function(x) Lambda(d.frm[x,1], d.frm[x,2], direction="row"))
+  v_Lambda_CI <- quantile(v_Lambda, probs=c(0.025,0.975), na.rm = TRUE)
+  size_lake_table[lake, "LambdaLB"] = round(v_Lambda_CI[[1]], digits = 4)
+  size_lake_table[lake, "LambdaUB"] = round(v_Lambda_CI[[2]], digits = 4)
+}
+
+size_lake_table
+```
+
+
+```{r Size by Lake association, fig.width=8, fig.height=7}
+food_choice_table_lake_abbrev <- food_choice_table
+dimnames(food_choice_table_lake_abbrev)["Lake"] <- list(c("H", "O", "T", "G"))
+assoc(Primary_Food_Choice ~ Size + Lake, data = food_choice_table_lake_abbrev, shade = TRUE)
+```
+
+
+## Independent Var: Size; Background Var: Gender
+```{r Size by Gender}
+
+food_choice_table_SbyG <- 
+  margin.table(food_choice_table, c("Size", "Primary_Food_Choice", "Gender"))
+
+# X^2 & G^2 tests
+print(assocstats(food_choice_table_SbyG))
+
+# Generalized Cochran-Mantel-Haenszel (CMH) tests
+print(CMHtest(food_choice_table_SbyG))
+
+for (gender in dimnames(food_choice_table_SbyG)$Gender){
+  SbyG <- food_choice_table_SbyG[,,gender]
+  
+  # Point Estimate of Contingency Coefficient
+  size_gender_table[gender, "ContCoef"] = round(ContCoef(SbyG), digits = 4)
+  
+  # Point Estimate of Cramer’s V
+  size_gender_table[gender, "CramerV"] = round(CramerV(SbyG), digits = 4)
+  
+  # Point Estimate of Goodman Kruskal’s Lambda
+  size_gender_table[gender, "Lambda"] = round(Lambda(SbyG, direction="row"), digits = 4)
+  
+  d.frm <- Untable(SbyG)
+  B <- 1000
+  idx <- matrix(sample(nrow(d.frm), size=nrow(d.frm) * B, replace=TRUE), ncol=B, byrow=FALSE)
+  
+  # code for 95% bootstrap confidence interval for ContCoef
+  v_ContCoef <- apply(idx, 2, function(x) ContCoef(d.frm[x,1], d.frm[x,2]))
+  v_ContCoef_CI <- quantile(v_ContCoef, probs=c(0.025,0.975), na.rm = TRUE)
+  size_gender_table[gender, "ContCoefLB"] = round(v_ContCoef_CI[[1]], digits = 4)
+  size_gender_table[gender, "ContCoefUB"] = round(v_ContCoef_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for CramerV
+  v_CramerV <- apply(idx, 2, function(x) CramerV(d.frm[x,1], d.frm[x,2]))
+  v_CramerV_CI <- quantile(v_CramerV, probs=c(0.025,0.975), na.rm = TRUE)
+  size_gender_table[gender, "CramerVLB"] = round(v_CramerV_CI[[1]], digits = 4)
+  size_gender_table[gender, "CramerVUB"] = round(v_CramerV_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for Lambda
+  v_Lambda <- apply(idx, 2, function(x) Lambda(d.frm[x,1], d.frm[x,2], direction="row"))
+  v_Lambda_CI <- quantile(v_Lambda, probs=c(0.025,0.975), na.rm = TRUE)
+  size_gender_table[gender, "LambdaLB"] = round(v_Lambda_CI[[1]], digits = 4)
+  size_gender_table[gender, "LambdaUB"] = round(v_Lambda_CI[[2]], digits = 4)
+}
+
+size_gender_table
+```
+
+
+```{r Size by Gender association, fig.width=8, fig.height=7}
+assoc(Primary_Food_Choice ~ Size + Gender, data = food_choice_table, shade = TRUE)
+```
+
+
+## Association Plots
+```{r association plot, fig.width=10, fig.height=16}
+assocL <- assoc(Primary_Food_Choice ~ Lake, data = food_choice_table, shade = TRUE)
+
+assocG <- assoc(Primary_Food_Choice ~ Gender, data = food_choice_table, shade = TRUE)
+
+assocS <- assoc(Primary_Food_Choice ~ Size, data = food_choice_table, shade = TRUE)
+
+assocLG <- assoc(Primary_Food_Choice ~ Lake + Gender, data = food_choice_table, shade = TRUE)
+
+assocLS <- assoc(Primary_Food_Choice ~ Lake + Size, data = food_choice_table, shade = TRUE)
+
+assocGS <- assoc(Primary_Food_Choice ~ Gender + Size, data = food_choice_table, shade = TRUE)
+
+assocLGS <- assoc(Primary_Food_Choice ~ Lake + Gender + Size, data = food_choice_table, shade = TRUE)
+
+assoc(~ Lake + Primary_Food_Choice + Gender + Size, data = food_choice_table, shade = TRUE)
+```
+
+
+# Doubledecker Plot
+```{r, fig.width=16, fig.height=8}
+food_choice_tableDD <- food_choice_table
+dimnames(food_choice_tableDD)["Gender"] <- list(c("M", "F"))
+doubledecker(Primary_Food_Choice ~ Lake + Size + Gender, data = food_choice_tableDD)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Failed Cases
+```{r Size by Lake_Gender}
+
+# Combine Lake and Gender
+Lake_Gender <- outer(Lake, Gender, paste, sep = "_")
+
+# Transpose and reshape the original array for Lake_Gender combination
+food_choice_array_LG <- aperm(food_choice_array, c(3, 4, 1, 2))
+dim(food_choice_array_LG) <- c(
+  length(Size), 
+  length(Primary_Food_Choice), 
+  length(Lake) * length(Gender)
+)
+
+# Assign dimension names
+dimnames(food_choice_array_LG) <- list(
+  Size = Size,
+  Primary_Food_Choice = Primary_Food_Choice,
+  Lake_Gender = as.vector(Lake_Gender)
+)
+
+# Convert to table
+food_choice_table_LG <- as.table(food_choice_array_LG)
+# food_choice_table_LG
+# dimnames(food_choice_table_LG)
+
+Size_LakeGender_table <- as.table(array(rep(0, 8*9), dim = c(8, 9), 
+                                    dimnames = list("Lake_Gender" = Lake_Gender, 
+                                                    "Measures" = Measures)))
+
+
+# X^2 & G^2 tests
+print(assocstats(food_choice_table_LG))
+
+# Generalized Cochran-Mantel-Haenszel (CMH) tests
+# print(CMHtest(food_choice_table_LG))
+
+for (lake_gender in dimnames(food_choice_table_LG)$Lake_Gender){
+  SbyLG <- food_choice_table_LG[,,lake_gender]
+  
+  # Point Estimate of Contingency Coefficient
+  Size_LakeGender_table[lake_gender, "ContCoef"] = round(ContCoef(SbyLG), digits = 4)
+  
+  # Point Estimate of Cramer’s V
+  Size_LakeGender_table[lake_gender, "CramerV"] = round(CramerV(SbyLG), digits = 4)
+  
+  # Point Estimate of Goodman Kruskal’s Lambda
+  Size_LakeGender_table[lake_gender, "Lambda"] = round(Lambda(SbyLG, direction="row"), digits = 4)
+  
+  d.frm <- Untable(SbyLG)
+  B <- 1000
+  idx <- matrix(sample(nrow(d.frm), size=nrow(d.frm) * B, replace=TRUE), ncol=B, byrow=FALSE)
+  
+  # code for 95% bootstrap confidence interval for ContCoef
+  v_ContCoef <- apply(idx, 2, function(x) ContCoef(d.frm[x,1], d.frm[x,2]))
+  v_ContCoef_CI <- quantile(v_ContCoef, probs=c(0.025,0.975), na.rm = TRUE)
+  Size_LakeGender_table[lake_gender, "ContCoefLB"] = round(v_ContCoef_CI[[1]], digits = 4)
+  Size_LakeGender_table[lake_gender, "ContCoefUB"] = round(v_ContCoef_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for CramerV
+  v_CramerV <- apply(idx, 2, function(x) CramerV(d.frm[x,1], d.frm[x,2]))
+  v_CramerV_CI <- quantile(v_CramerV, probs=c(0.025,0.975), na.rm = TRUE)
+  Size_LakeGender_table[lake_gender, "CramerVLB"] = round(v_CramerV_CI[[1]], digits = 4)
+  Size_LakeGender_table[lake_gender, "CramerVUB"] = round(v_CramerV_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for Lambda
+  v_Lambda <- apply(idx, 2, function(x) Lambda(d.frm[x,1], d.frm[x,2], direction="row"))
+  v_Lambda_CI <- quantile(v_Lambda, probs=c(0.025,0.975), na.rm = TRUE)
+  Size_LakeGender_table[lake_gender, "LambdaLB"] = round(v_Lambda_CI[[1]], digits = 4)
+  Size_LakeGender_table[lake_gender, "LambdaUB"] = round(v_Lambda_CI[[2]], digits = 4)
+}
+
+Size_LakeGender_table
+
+```
+
+
+
+```{r Gender by Lake_Size}
+
+# Combine Lake and Size
+Lake_Size <- outer(Lake, Size, paste, sep = "_")
+
+# Transpose and reshape the original array for Lake_Size combination
+food_choice_array_LS <- aperm(food_choice_array, c(2, 4, 1, 3))
+dim(food_choice_array_LS) <- c(
+  length(Gender), 
+  length(Primary_Food_Choice), 
+  length(Lake) * length(Size)
+)
+
+# Assign dimension names
+dimnames(food_choice_array_LS) <- list(
+  Gender = Gender,
+  Primary_Food_Choice = Primary_Food_Choice,
+  Lake_Size = as.vector(Lake_Size)
+)
+
+# Convert to table
+food_choice_table_LS <- as.table(food_choice_array_LS)
+# food_choice_table_LS
+# dimnames(food_choice_table_LS)
+
+Gender_LakeSize_table <- as.table(array(rep(0, 8*9), dim = c(8, 9),
+                                    dimnames = list("Lake_Size" = Lake_Size,
+                                                    "Measures" = Measures)))
+
+
+# X^2 & G^2 tests
+print(assocstats(food_choice_table_LS))
+
+# Generalized Cochran-Mantel-Haenszel (CMH) tests
+# print(CMHtest(food_choice_table_LS))
+
+for (lake_size in dimnames(food_choice_table_LS)$Lake_Size){
+  GbyLS <- food_choice_table_LS[,,lake_size]
+  
+  # Point Estimate of Contingency Coefficient
+  Gender_LakeSize_table[lake_size, "ContCoef"] = round(ContCoef(GbyLS), digits = 4)
+  
+  # Point Estimate of Cramer’s V
+  Gender_LakeSize_table[lake_size, "CramerV"] = round(CramerV(GbyLS), digits = 4)
+  
+  # Point Estimate of Goodman Kruskal’s Lambda
+  Gender_LakeSize_table[lake_size, "Lambda"] = round(Lambda(GbyLS, direction="row"), digits = 4)
+  
+  d.frm <- Untable(GbyLS)
+  B <- 1000
+  idx <- matrix(sample(nrow(d.frm), size=nrow(d.frm) * B, replace=TRUE), ncol=B, byrow=FALSE)
+  
+  # code for 95% bootstrap confidence interval for ContCoef
+  v_ContCoef <- apply(idx, 2, function(x) ContCoef(d.frm[x,1], d.frm[x,2]))
+  v_ContCoef_CI <- quantile(v_ContCoef, probs=c(0.025,0.975), na.rm = TRUE)
+  Gender_LakeSize_table[lake_size, "ContCoefLB"] = round(v_ContCoef_CI[[1]], digits = 4)
+  Gender_LakeSize_table[lake_size, "ContCoefUB"] = round(v_ContCoef_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for CramerV
+  v_CramerV <- apply(idx, 2, function(x) CramerV(d.frm[x,1], d.frm[x,2]))
+  v_CramerV_CI <- quantile(v_CramerV, probs=c(0.025,0.975), na.rm = TRUE)
+  Gender_LakeSize_table[lake_size, "CramerVLB"] = round(v_CramerV_CI[[1]], digits = 4)
+  Gender_LakeSize_table[lake_size, "CramerVUB"] = round(v_CramerV_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for Lambda
+  v_Lambda <- apply(idx, 2, function(x) Lambda(d.frm[x,1], d.frm[x,2], direction="row"))
+  v_Lambda_CI <- quantile(v_Lambda, probs=c(0.025,0.975), na.rm = TRUE)
+  Gender_LakeSize_table[lake_size, "LambdaLB"] = round(v_Lambda_CI[[1]], digits = 4)
+  Gender_LakeSize_table[lake_size, "LambdaUB"] = round(v_Lambda_CI[[2]], digits = 4)
+}
+
+Gender_LakeSize_table
+
+```
+
+
+
+```{r Lake by Gender_Size}
+
+# Combine Gender and Size
+Gender_Size <- outer(Gender, Size, paste, sep = "_")
+
+# Transpose and reshape the original array for Gender_Size combination
+food_choice_array_GS <- aperm(food_choice_array, c(1, 4, 2, 3))
+dim(food_choice_array_GS) <- c(
+  length(Lake), 
+  length(Primary_Food_Choice), 
+  length(Gender) * length(Size)
+)
+
+# Assign dimension names
+dimnames(food_choice_array_GS) <- list(
+  Lake = Lake,
+  Primary_Food_Choice = Primary_Food_Choice,
+  Gender_Size = as.vector(Gender_Size)
+)
+
+# Convert to table
+food_choice_table_GS <- as.table(food_choice_array_GS)
+# food_choice_table_GS
+# dimnames(food_choice_table_GS)
+
+Lake_GenderSize_table <- as.table(array(rep(0, 4*9), dim = c(4, 9),
+                                    dimnames = list("Gender_Size" = Gender_Size,
+                                                    "Measures" = Measures)))
+
+
+# X^2 & G^2 tests
+print(assocstats(food_choice_table_GS))
+
+# Generalized Cochran-Mantel-Haenszel (CMH) tests
+# print(CMHtest(food_choice_table_GS))
+
+for (gender_size in dimnames(food_choice_table_GS)$Gender_Size){
+  LbyGS <- food_choice_table_GS[,,gender_size]
+  
+  # Point Estimate of Contingency Coefficient
+  Lake_GenderSize_table[gender_size, "ContCoef"] = round(ContCoef(LbyGS), digits = 4)
+  
+  # Point Estimate of Cramer’s V
+  Lake_GenderSize_table[gender_size, "CramerV"] = round(CramerV(LbyGS), digits = 4)
+  
+  # Point Estimate of Goodman Kruskal’s Lambda
+  Lake_GenderSize_table[gender_size, "Lambda"] = round(Lambda(LbyGS, direction="row"), digits = 4)
+  
+  d.frm <- Untable(LbyGS)
+  B <- 1000
+  idx <- matrix(sample(nrow(d.frm), size=nrow(d.frm) * B, replace=TRUE), ncol=B, byrow=FALSE)
+  
+  # code for 95% bootstrap confidence interval for ContCoef
+  v_ContCoef <- apply(idx, 2, function(x) ContCoef(d.frm[x,1], d.frm[x,2]))
+  v_ContCoef_CI <- quantile(v_ContCoef, probs=c(0.025,0.975), na.rm = TRUE)
+  Lake_GenderSize_table[gender_size, "ContCoefLB"] = round(v_ContCoef_CI[[1]], digits = 4)
+  Lake_GenderSize_table[gender_size, "ContCoefUB"] = round(v_ContCoef_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for CramerV
+  v_CramerV <- apply(idx, 2, function(x) CramerV(d.frm[x,1], d.frm[x,2]))
+  v_CramerV_CI <- quantile(v_CramerV, probs=c(0.025,0.975), na.rm = TRUE)
+  Lake_GenderSize_table[gender_size, "CramerVLB"] = round(v_CramerV_CI[[1]], digits = 4)
+  Lake_GenderSize_table[gender_size, "CramerVUB"] = round(v_CramerV_CI[[2]], digits = 4)
+  
+  # code for 95% bootstrap confidence interval for Lambda
+  v_Lambda <- apply(idx, 2, function(x) Lambda(d.frm[x,1], d.frm[x,2], direction="row"))
+  v_Lambda_CI <- quantile(v_Lambda, probs=c(0.025,0.975), na.rm = TRUE)
+  Lake_GenderSize_table[gender_size, "LambdaLB"] = round(v_Lambda_CI[[1]], digits = 4)
+  Lake_GenderSize_table[gender_size, "LambdaUB"] = round(v_Lambda_CI[[2]], digits = 4)
+}
+
+Lake_GenderSize_table
+
+```
+
+
+
+
+
+
+

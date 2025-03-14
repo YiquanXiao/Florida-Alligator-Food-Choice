@@ -1,0 +1,1324 @@
+---
+title: "Stat 530 Project Part 4 Test"
+author: "Zihan Wang"
+date: "2024-05-12"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r import libraries, echo=FALSE, include=FALSE}
+# import libraries
+library(vcd)
+library(vcdExtra)
+library(DescTools)
+library(MASS)
+library(gpairs)
+library(ggplot2)
+library(effects)
+library(lmtest)
+library(splines)
+library(car)
+library(carData)
+
+library(gridGraphics)
+library(gridExtra)
+
+library(nnet)
+library(VGAM)
+library(reshape2)
+```
+
+
+
+# Create Dataset
+```{r prepare data}
+# data
+food_choice_data <- c(
+  7, 1, 0, 0, 5,
+  4, 0, 0, 1, 2,
+  16, 3, 2, 2, 3,
+  3, 0, 1, 2, 3,
+  2, 2, 0, 0, 1,
+  13, 7, 6, 0, 0,
+  3, 9, 1, 0, 2,
+  0, 1, 0, 1, 0,
+  3, 7, 1, 0, 1,
+  8, 6, 6, 3, 5,
+  2, 4, 1, 1, 4,
+  0, 1, 0, 0, 0,
+  13, 10, 0, 2, 2,
+  9, 0, 0, 1, 2,
+  3, 9, 1, 0, 1,
+  8, 1, 0, 0, 1
+)
+# variables and corresponding levels
+Lake <- c("Hancock", "Oklawaha", "Trafford", "George")
+Gender <- c("Male", "Female")
+Size <- c("<= 2.3", "> 2.3")
+Primary_Food_Choice <- c("Fish", "Invertebrate", "Reptile", "Bird", "Other")
+
+# make it 4d array
+food_choice_array <- array(food_choice_data, dim = c(4, 2, 2, 5),
+                           dimnames = list(Lake = Lake,
+                                           Gender = Gender,
+                                           Size = Size,
+                                           Primary_Food_Choice = Primary_Food_Choice))
+
+# make 4-way table
+food_choice_table <- as.table(food_choice_array)
+ftable(food_choice_table)
+```
+
+
+
+# Influencial Cases Fish
+```{r}
+
+fish_data <- food_choice_array[, , , 1]
+not_fish_data <- apply(food_choice_array[, , , -1], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_fish_data, fish_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Fish = c("Not Fish", "Fish")
+)
+
+fish_table <- as.table(new_food_choice_data)
+# ftable(fish_table)
+
+
+# Convert table to dataframe
+fish_dfm <- as.data.frame(fish_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(fish_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Fish
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(fish_table)
+
+# Expand the dataframe based on the 'Freq' column
+fish_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(fish_dfm) <- NULL
+
+# View the fish_dfm dataframe
+# fish_dfm
+
+
+fish.mod3 <- glm(Fish ~ Lake * Size + Gender,
+                 data = fish_dfm, family =binomial)
+
+res.fish <- influencePlot(fish.mod3, id=list(n=5))
+k <- length(coef(fish.mod3))
+n <- nrow(fish_dfm)
+text(x = c(2, 3) * k / n, y = -1.8, c("2k/n", "3k/n"), cex = 1.2)
+list(HatThreshold = c("2k/n" = 2, "3k/n" = 3) * k / n)
+idx.fish <- which(rownames(fish_dfm) %in% rownames(res.fish))
+cbind(fish_dfm[idx.fish, 1:4], res.fish)
+
+influenceIndexPlot(fish.mod3, vars=c("Cook", "Studentized", "hat"))
+
+```
+
+
+
+# Influencial Cases Invertabrate
+```{r}
+
+invertebrate_data <- food_choice_array[, , , 2]
+not_invertebrate_data <- apply(food_choice_array[, , , -2], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_invertebrate_data, invertebrate_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Invertebrate = c("Not Invertebrate", "Invertebrate")
+)
+
+invertebrate_table <- as.table(new_food_choice_data)
+# ftable(invertebrate_table)
+
+
+# Convert table to dataframe
+invertebrate_dfm <- as.data.frame(invertebrate_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(invertebrate_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Invertebrate
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(invertebrate_table)
+
+# Expand the dataframe based on the 'Freq' column
+invertebrate_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(invertebrate_dfm) <- NULL
+
+# View the invertebrate_dfm dataframe
+# invertebrate_dfm
+
+
+invertebrate.mod2 <- glm(Invertebrate ~ Lake * Gender * Size,
+                         data = invertebrate_dfm, family = "binomial")
+
+res.invertebrate <- influencePlot(invertebrate.mod2, id=list(n=5))
+k <- length(coef(invertebrate.mod2))
+n <- nrow(invertebrate_dfm)
+text(x = c(2, 3) * k / n, y = -1.8, c("2k/n", "3k/n"), cex = 1.2)
+list(HatThreshold = c("2k/n" = 2, "3k/n" = 3) * k / n)
+idx.invertebrate <- which(rownames(invertebrate_dfm) %in% rownames(res.invertebrate))
+cbind(invertebrate_dfm[idx.invertebrate, 1:4], res.invertebrate)
+
+influenceIndexPlot(invertebrate.mod2, vars=c("Cook", "Studentized", "hat"))
+
+```
+
+
+
+# Influencial Cases Reptile
+```{r}
+
+reptile_data <- food_choice_array[, , , 3]
+not_reptile_data <- apply(food_choice_array[, , , -3], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_reptile_data, reptile_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Reptile = c("Not Reptile", "Reptile")
+)
+
+reptile_table <- as.table(new_food_choice_data)
+# ftable(reptile_table)
+
+
+# Convert table to dataframe
+reptile_dfm <- as.data.frame(reptile_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(reptile_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Reptile
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(reptile_table)
+
+# Expand the dataframe based on the 'Freq' column
+reptile_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(reptile_dfm) <- NULL
+
+# View the reptile_dfm dataframe
+# reptile_dfm
+
+
+reptile.mod3 <- glm(Reptile ~ Lake * Gender + Lake * Size,
+                    data = reptile_dfm, family =binomial)
+
+res.reptile <- influencePlot(reptile.mod3, id=list(n=5))
+k <- length(coef(reptile.mod3))
+n <- nrow(reptile_dfm)
+text(x = c(2, 3) * k / n, y = -1.8, c("2k/n", "3k/n"), cex = 1.2)
+list(HatThreshold = c("2k/n" = 2, "3k/n" = 3) * k / n)
+idx.reptile <- which(rownames(reptile_dfm) %in% rownames(res.reptile))
+cbind(reptile_dfm[idx.reptile, 1:4], res.reptile)
+
+influenceIndexPlot(reptile.mod3, vars=c("Cook", "Studentized", "hat"))
+
+```
+
+
+
+# Influencial Cases Bird
+```{r}
+
+bird_data <- food_choice_array[, , , 4]
+not_bird_data <- apply(food_choice_array[, , , -4], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_bird_data, bird_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Bird = c("Not Bird", "Bird")
+)
+
+bird_table <- as.table(new_food_choice_data)
+# ftable(bird_table)
+
+
+# Convert table to dataframe
+bird_dfm <- as.data.frame(bird_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(bird_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Bird
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(bird_table)
+
+# Expand the dataframe based on the 'Freq' column
+bird_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(bird_dfm) <- NULL
+
+# View the bird_dfm dataframe
+# bird_dfm
+
+
+bird.mod3 <- glm(Bird ~ Lake * Size + Gender * Size,
+                 data = bird_dfm, family =binomial)
+
+res.bird <- influencePlot(bird.mod3, id=list(n=5))
+k <- length(coef(bird.mod3))
+n <- nrow(bird_dfm)
+text(x = c(2, 3) * k / n, y = -1.8, c("2k/n", "3k/n"), cex = 1.2)
+list(HatThreshold = c("2k/n" = 2, "3k/n" = 3) * k / n)
+idx.bird <- which(rownames(bird_dfm) %in% rownames(res.bird))
+cbind(bird_dfm[idx.bird, 1:4], res.bird)
+
+influenceIndexPlot(bird.mod3, vars=c("Cook", "Studentized", "hat"))
+
+```
+
+
+
+# Influencial Cases Other
+```{r}
+
+other_data <- food_choice_array[, , , 5]
+not_other_data <- apply(food_choice_array[, , , -5], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_other_data, other_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Other = c("Not Other", "Other")
+)
+
+other_table <- as.table(new_food_choice_data)
+# ftable(other_table)
+
+
+# Convert table to dataframe
+other_dfm <- as.data.frame(other_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(other_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Other
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(other_table)
+
+# Expand the dataframe based on the 'Freq' column
+other_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(other_dfm) <- NULL
+
+# View the other_dfm dataframe
+# other_dfm
+
+
+other.mod2 <- glm(Other ~ Lake * Gender * Size,
+                  data = other_dfm, family =binomial)
+
+res.other <- influencePlot(other.mod2, id=list(n=5))
+k <- length(coef(other.mod2))
+n <- nrow(other_dfm)
+text(x = c(2, 3) * k / n, y = -1.8, c("2k/n", "3k/n"), cex = 1.2)
+list(HatThreshold = c("2k/n" = 2, "3k/n" = 3) * k / n)
+idx.other <- which(rownames(other_dfm) %in% rownames(res.other))
+cbind(other_dfm[idx.other, 1:4], res.other)
+
+influenceIndexPlot(other.mod2, vars=c("Cook", "Studentized", "hat"))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 7.3 Generalized logit model
+```{r}
+
+food_choice_df <- as.data.frame(food_choice_table)
+# food_choice_df
+
+```
+
+
+
+```{r}
+
+# Create a 3x3 matrix filled 
+all_interaction.deviance.table <- matrix(0, nrow = 3, ncol = 3)
+
+# Assign row names
+rownames(all_interaction.deviance.table) <- c("deviance", "edf", "deviance/edf")
+
+# Assign column names
+colnames(all_interaction.deviance.table) <- c("Main Effect", "2-way Interaction", "3-way Interaction")
+
+# all_interaction.deviance.table
+
+
+# Create a 2x3 matrix filled 
+all_interaction.AIC_BIC.table <- matrix(0, nrow = 2, ncol = 3)
+
+# Assign row names
+rownames(all_interaction.AIC_BIC.table) <- c("AIC", "BIC")
+
+# Assign column names
+colnames(all_interaction.AIC_BIC.table) <- c("Main Effect", "2-way Interaction", "3-way Interaction")
+
+# all_interaction.AIC_BIC.table
+
+```
+
+
+
+```{r}
+
+food_choice_multinom0 <- multinom(Primary_Food_Choice ~ Lake + Gender + Size, 
+                                  data = food_choice_df, Hess = TRUE, 
+                                  weights = Freq)
+summary(food_choice_multinom0, Wald = TRUE)
+
+cat("-----------------------------------------------------------------------\n")
+
+Anova(food_choice_multinom0)
+
+cat("-----------------------------------------------------------------------\n")
+
+stats <- summary(food_choice_multinom0, Wald = TRUE)
+z <- stats$Wald.ratios
+p <- 2 * (1 - pnorm(abs(z)))
+zapsmall(p)
+
+cat("=======================================================================\n")
+
+pvalue_food_choice_multinom0 <- 1-pchisq(food_choice_multinom0$deviance, df=food_choice_multinom0$edf)
+cat("p-value for food_choice_multinom0:", pvalue_food_choice_multinom0, "\n")
+
+all_interaction.deviance.table[, 1] <- 
+  c(food_choice_multinom0$deviance, food_choice_multinom0$edf, 
+    food_choice_multinom0$deviance / food_choice_multinom0$edf)
+
+# all_interaction.deviance.table
+
+cat("-----------------------------------------------------------------------\n")
+
+cat("AIC for food_choice_multinom0:", VGAM::AIC(food_choice_multinom0), "\n")
+cat("BIC for food_choice_multinom0:", VGAM::BIC(food_choice_multinom0), "\n")
+
+all_interaction.AIC_BIC.table[, 1] <- 
+  c(VGAM::AIC(food_choice_multinom0), VGAM::BIC(food_choice_multinom0))
+
+```
+
+
+
+```{r}
+
+plot(Effect("Lake", food_choice_multinom0), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect("Gender", food_choice_multinom0), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect("Size", food_choice_multinom0), 
+     multiline = TRUE, style = "lines")
+
+```
+
+
+
+```{r}
+
+food_choice_multinom1 <- multinom(Primary_Food_Choice ~ (Lake + Gender + Size)^2, 
+                                  data = food_choice_df, Hess = TRUE, 
+                                  weights = Freq)
+summary(food_choice_multinom1, Wald = TRUE)
+
+cat("-----------------------------------------------------------------------\n")
+
+Anova(food_choice_multinom1)
+
+cat("-----------------------------------------------------------------------\n")
+
+stats <- summary(food_choice_multinom1, Wald = TRUE)
+z <- stats$Wald.ratios
+p <- 2 * (1 - pnorm(abs(z)))
+zapsmall(p)
+
+cat("=======================================================================\n")
+
+pvalue_food_choice_multinom1 <- 1-pchisq(food_choice_multinom1$deviance, df=food_choice_multinom1$edf)
+cat("p-value for food_choice_multinom1:", pvalue_food_choice_multinom1, "\n")
+
+all_interaction.deviance.table[, 2] <- 
+  c(food_choice_multinom1$deviance, food_choice_multinom1$edf, 
+    food_choice_multinom1$deviance / food_choice_multinom1$edf)
+
+# all_interaction.deviance.table
+
+cat("-----------------------------------------------------------------------\n")
+
+cat("AIC for food_choice_multinom1:", VGAM::AIC(food_choice_multinom1), "\n")
+cat("BIC for food_choice_multinom1:", VGAM::BIC(food_choice_multinom1), "\n")
+
+all_interaction.AIC_BIC.table[, 2] <- 
+  c(VGAM::AIC(food_choice_multinom1), VGAM::BIC(food_choice_multinom1))
+
+```
+
+
+
+```{r}
+
+plot(Effect(c("Lake", "Gender"), food_choice_multinom1), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect(c("Lake", "Size"), food_choice_multinom1), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect(c("Gender", "Size"), food_choice_multinom1), 
+     multiline = TRUE, style = "lines")
+
+```
+
+
+
+```{r}
+
+food_choice_multinom2 <- multinom(Primary_Food_Choice ~ 
+                                    Lake * Gender * Size, 
+                                  data = food_choice_df, Hess = TRUE, 
+                                  weights = Freq)
+summary(food_choice_multinom2, Wald = TRUE)
+
+cat("-----------------------------------------------------------------------\n")
+
+Anova(food_choice_multinom2)
+
+cat("-----------------------------------------------------------------------\n")
+
+stats <- summary(food_choice_multinom2, Wald = TRUE)
+z <- stats$Wald.ratios
+p <- 2 * (1 - pnorm(abs(z)))
+zapsmall(p)
+
+cat("=======================================================================\n")
+
+pvalue_food_choice_multinom2 <- 1-pchisq(food_choice_multinom2$deviance, df=food_choice_multinom2$edf)
+cat("p-value for food_choice_multinom2:", pvalue_food_choice_multinom2, "\n")
+
+all_interaction.deviance.table[, 3] <- 
+  c(food_choice_multinom2$deviance, food_choice_multinom2$edf, 
+    food_choice_multinom2$deviance / food_choice_multinom2$edf)
+
+# all_interaction.deviance.table
+
+cat("-----------------------------------------------------------------------\n")
+
+cat("AIC for food_choice_multinom2:", VGAM::AIC(food_choice_multinom2), "\n")
+cat("BIC for food_choice_multinom2:", VGAM::BIC(food_choice_multinom2), "\n")
+
+all_interaction.AIC_BIC.table[, 3] <- 
+  c(VGAM::AIC(food_choice_multinom2), VGAM::BIC(food_choice_multinom2))
+
+```
+
+
+
+```{r}
+
+all_interaction.deviance.table
+
+all_interaction.AIC_BIC.table
+
+```
+
+
+
+```{r}
+
+plot(Effect(c("Lake", "Gender", "Size"), food_choice_multinom2), 
+     multiline = TRUE, style = "lines")
+
+```
+
+
+
+
+
+
+
+# 2-way Interactions
+```{r}
+
+# Create a 3x7 matrix filled 
+two_way_interactions.deviance.table <- matrix(0, nrow = 3, ncol = 7)
+
+# Assign row names
+rownames(two_way_interactions.deviance.table) <- c("deviance", "edf", "deviance/edf")
+
+# Assign column names
+colnames(two_way_interactions.deviance.table) <- c("All 2-way Interaction", 
+                                                   "[Lake Gender][Size]", 
+                                                   "[Lake Size][Gender]", 
+                                                   "[Lake][Gender Size]", 
+                                                   "[Lake Gender][Lake Size]", 
+                                                   "[Lake Gender][Gender Size]", 
+                                                   "[Lake Size][Gender Size]"
+)
+
+two_way_interactions.deviance.table[, 1] <- 
+  c(food_choice_multinom1$deviance, food_choice_multinom1$edf, 
+    food_choice_multinom1$deviance / food_choice_multinom1$edf)
+
+# two_way_interactions.deviance.table
+
+
+# Create a 2x7 matrix filled 
+two_way_interactions.AIC_BIC.table <- matrix(0, nrow = 2, ncol = 7)
+
+# Assign row names
+rownames(two_way_interactions.AIC_BIC.table) <- c("AIC", "BIC")
+
+# Assign column names
+colnames(two_way_interactions.AIC_BIC.table) <- c("All 2-way Interaction", 
+                                                  "[Lake Gender][Size]", 
+                                                  "[Lake Size][Gender]", 
+                                                  "[Lake][Gender Size]", 
+                                                  "[Lake Gender][Lake Size]", 
+                                                  "[Lake Gender][Gender Size]", 
+                                                  "[Lake Size][Gender Size]"
+)
+
+two_way_interactions.AIC_BIC.table[, 1] <- 
+  c(VGAM::AIC(food_choice_multinom1), VGAM::BIC(food_choice_multinom1))
+
+# two.way_interactions.table
+
+```
+
+
+
+## [Lake Gender][Size]
+```{r}
+
+food_choice_multinom1.1 <- multinom(Primary_Food_Choice ~ Lake * Gender + Size, 
+                                    data = food_choice_df, Hess = TRUE, 
+                                    weights = Freq)
+summary(food_choice_multinom1.1, Wald = TRUE)
+
+cat("-----------------------------------------------------------------------\n")
+
+Anova(food_choice_multinom1.1)
+
+cat("-----------------------------------------------------------------------\n")
+
+stats <- summary(food_choice_multinom1.1, Wald = TRUE)
+z <- stats$Wald.ratios
+p <- 2 * (1 - pnorm(abs(z)))
+zapsmall(p)
+
+cat("=======================================================================\n")
+
+pvalue_food_choice_multinom1.1 <- 1-pchisq(food_choice_multinom1.1$deviance, df=food_choice_multinom1.1$edf)
+cat("p-value for food_choice_multinom1.1:", pvalue_food_choice_multinom1.1, "\n")
+
+two_way_interactions.deviance.table[, 2] <- 
+  c(food_choice_multinom1.1$deviance, food_choice_multinom1.1$edf, 
+    food_choice_multinom1.1$deviance / food_choice_multinom1.1$edf)
+
+# two_way_interactions.deviance.table
+
+cat("-----------------------------------------------------------------------\n")
+
+cat("AIC for food_choice_multinom1.1:", VGAM::AIC(food_choice_multinom1.1), "\n")
+cat("BIC for food_choice_multinom1.1:", VGAM::BIC(food_choice_multinom1.1), "\n")
+
+two_way_interactions.AIC_BIC.table[, 2] <- 
+  c(VGAM::AIC(food_choice_multinom1.1), VGAM::BIC(food_choice_multinom1.1))
+
+# two_way_interactions.AIC_BIC.table
+
+```
+
+
+
+```{r}
+
+plot(Effect(c("Lake", "Gender"), food_choice_multinom1.1), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect("Size", food_choice_multinom1.1), 
+     multiline = TRUE, style = "lines")
+
+```
+
+
+
+## [Lake Size][Gender]
+```{r}
+
+food_choice_multinom1.2 <- multinom(Primary_Food_Choice ~ Lake * Size + Gender, 
+                                    data = food_choice_df, Hess = TRUE, 
+                                    weights = Freq)
+summary(food_choice_multinom1.2, Wald = TRUE)
+
+cat("-----------------------------------------------------------------------\n")
+
+Anova(food_choice_multinom1.2)
+
+cat("-----------------------------------------------------------------------\n")
+
+stats <- summary(food_choice_multinom1.2, Wald = TRUE)
+z <- stats$Wald.ratios
+p <- 2 * (1 - pnorm(abs(z)))
+zapsmall(p)
+
+cat("=======================================================================\n")
+
+pvalue_food_choice_multinom1.2 <- 1-pchisq(food_choice_multinom1.2$deviance, 
+                                           df=food_choice_multinom1.2$edf)
+cat("p-value for food_choice_multinom1.2:", pvalue_food_choice_multinom1.2, "\n")
+
+two_way_interactions.deviance.table[, 3] <- 
+  c(food_choice_multinom1.2$deviance, food_choice_multinom1.2$edf, 
+    food_choice_multinom1.2$deviance / food_choice_multinom1.2$edf)
+
+# two_way_interactions.deviance.table
+
+cat("-----------------------------------------------------------------------\n")
+
+cat("AIC for food_choice_multinom1.2:", VGAM::AIC(food_choice_multinom1.2), "\n")
+cat("BIC for food_choice_multinom1.2:", VGAM::BIC(food_choice_multinom1.2), "\n")
+
+two_way_interactions.AIC_BIC.table[, 3] <- 
+  c(VGAM::AIC(food_choice_multinom1.2), VGAM::BIC(food_choice_multinom1.2))
+
+# two_way_interactions.AIC_BIC.table
+
+```
+
+
+
+```{r}
+
+plot(Effect(c("Lake", "Size"), food_choice_multinom1.2), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect("Gender", food_choice_multinom1.2), 
+     multiline = TRUE, style = "lines")
+
+```
+
+
+
+## [Lake][Gender Size]
+```{r}
+
+food_choice_multinom1.3 <- multinom(Primary_Food_Choice ~ Lake + Gender * Size, 
+                                    data = food_choice_df, Hess = TRUE, 
+                                    weights = Freq)
+summary(food_choice_multinom1.3, Wald = TRUE)
+
+cat("-----------------------------------------------------------------------\n")
+
+Anova(food_choice_multinom1.3)
+
+cat("-----------------------------------------------------------------------\n")
+
+stats <- summary(food_choice_multinom1.3, Wald = TRUE)
+z <- stats$Wald.ratios
+p <- 2 * (1 - pnorm(abs(z)))
+zapsmall(p)
+
+cat("=======================================================================\n")
+
+pvalue_food_choice_multinom1.3 <- 1-pchisq(food_choice_multinom1.3$deviance, 
+                                           df=food_choice_multinom1.3$edf)
+cat("p-value for food_choice_multinom1.3:", pvalue_food_choice_multinom1.3, "\n")
+
+two_way_interactions.deviance.table[, 4] <- 
+  c(food_choice_multinom1.3$deviance, food_choice_multinom1.3$edf, 
+    food_choice_multinom1.3$deviance / food_choice_multinom1.3$edf)
+
+# two_way_interactions.deviance.table
+
+cat("-----------------------------------------------------------------------\n")
+
+cat("AIC for food_choice_multinom1.3:", VGAM::AIC(food_choice_multinom1.3), "\n")
+cat("BIC for food_choice_multinom1.3:", VGAM::BIC(food_choice_multinom1.3), "\n")
+
+two_way_interactions.AIC_BIC.table[, 4] <- 
+  c(VGAM::AIC(food_choice_multinom1.3), VGAM::BIC(food_choice_multinom1.3))
+
+# two_way_interactions.AIC_BIC.table
+
+```
+
+
+
+```{r}
+
+plot(Effect("Lake", food_choice_multinom1.3), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect(c("Gender", "Size"), food_choice_multinom1.3), 
+     multiline = TRUE, style = "lines")
+
+```
+
+
+
+## [Lake Gender][Lake Size]
+```{r}
+
+food_choice_multinom1.4 <- multinom(Primary_Food_Choice ~ Lake * Gender + Lake * Size, 
+                                    data = food_choice_df, Hess = TRUE, 
+                                    weights = Freq)
+summary(food_choice_multinom1.4, Wald = TRUE)
+
+cat("-----------------------------------------------------------------------\n")
+
+Anova(food_choice_multinom1.4)
+
+cat("-----------------------------------------------------------------------\n")
+
+stats <- summary(food_choice_multinom1.4, Wald = TRUE)
+z <- stats$Wald.ratios
+p <- 2 * (1 - pnorm(abs(z)))
+zapsmall(p)
+
+cat("=======================================================================\n")
+
+pvalue_food_choice_multinom1.4 <- 1-pchisq(food_choice_multinom1.4$deviance, df=food_choice_multinom1.4$edf)
+cat("p-value for food_choice_multinom1.4:", pvalue_food_choice_multinom1.4, "\n")
+
+two_way_interactions.deviance.table[, 5] <- 
+  c(food_choice_multinom1.4$deviance, food_choice_multinom1.4$edf, 
+    food_choice_multinom1.4$deviance / food_choice_multinom1.4$edf)
+
+# two_way_interactions.deviance.table
+
+cat("-----------------------------------------------------------------------\n")
+
+cat("AIC for food_choice_multinom1.4:", VGAM::AIC(food_choice_multinom1.4), "\n")
+cat("BIC for food_choice_multinom1.4:", VGAM::BIC(food_choice_multinom1.4), "\n")
+
+two_way_interactions.AIC_BIC.table[, 5] <- 
+  c(VGAM::AIC(food_choice_multinom1.4), VGAM::BIC(food_choice_multinom1.4))
+
+# two_way_interactions.AIC_BIC.table
+
+```
+
+
+
+```{r}
+
+plot(Effect(c("Lake", "Gender"), food_choice_multinom1.4), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect(c("Lake", "Size"), food_choice_multinom1.4), 
+     multiline = TRUE, style = "lines")
+
+```
+
+
+
+## [Lake Gender][Gender Size]
+```{r}
+
+food_choice_multinom1.5 <- multinom(Primary_Food_Choice ~ Lake * Gender + Gender * Size, 
+                                    data = food_choice_df, Hess = TRUE, 
+                                    weights = Freq)
+summary(food_choice_multinom1.5, Wald = TRUE)
+
+cat("-----------------------------------------------------------------------\n")
+
+Anova(food_choice_multinom1.5)
+
+cat("-----------------------------------------------------------------------\n")
+
+stats <- summary(food_choice_multinom1.5, Wald = TRUE)
+z <- stats$Wald.ratios
+p <- 2 * (1 - pnorm(abs(z)))
+zapsmall(p)
+
+cat("=======================================================================\n")
+
+pvalue_food_choice_multinom1.5 <- 1-pchisq(food_choice_multinom1.5$deviance, df=food_choice_multinom1.5$edf)
+cat("p-value for food_choice_multinom1.5:", pvalue_food_choice_multinom1.5, "\n")
+
+two_way_interactions.deviance.table[, 6] <- 
+  c(food_choice_multinom1.5$deviance, food_choice_multinom1.5$edf, 
+    food_choice_multinom1.5$deviance / food_choice_multinom1.5$edf)
+
+# two_way_interactions.deviance.table
+
+cat("-----------------------------------------------------------------------\n")
+
+cat("AIC for food_choice_multinom1.5:", VGAM::AIC(food_choice_multinom1.5), "\n")
+cat("BIC for food_choice_multinom1.5:", VGAM::BIC(food_choice_multinom1.5), "\n")
+
+two_way_interactions.AIC_BIC.table[, 6] <- 
+  c(VGAM::AIC(food_choice_multinom1.5), VGAM::BIC(food_choice_multinom1.5))
+
+# two_way_interactions.AIC_BIC.table
+
+```
+
+
+
+```{r}
+
+plot(Effect(c("Lake", "Gender"), food_choice_multinom1.5), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect(c("Gender", "Size"), food_choice_multinom1.5), 
+     multiline = TRUE, style = "lines")
+
+```
+
+
+
+## [Lake Size][Gender Size]
+```{r}
+
+food_choice_multinom1.6 <- multinom(Primary_Food_Choice ~ Lake * Size + Gender * Size, 
+                                    data = food_choice_df, Hess = TRUE, 
+                                    weights = Freq)
+summary(food_choice_multinom1.6, Wald = TRUE)
+
+cat("-----------------------------------------------------------------------\n")
+
+Anova(food_choice_multinom1.6)
+
+cat("-----------------------------------------------------------------------\n")
+
+stats <- summary(food_choice_multinom1.6, Wald = TRUE)
+z <- stats$Wald.ratios
+p <- 2 * (1 - pnorm(abs(z)))
+zapsmall(p)
+
+cat("=======================================================================\n")
+
+pvalue_food_choice_multinom1.6 <- 1-pchisq(food_choice_multinom1.6$deviance, df=food_choice_multinom1.6$edf)
+cat("p-value for food_choice_multinom1.6:", pvalue_food_choice_multinom1.6, "\n")
+
+two_way_interactions.deviance.table[, 7] <- 
+  c(food_choice_multinom1.6$deviance, food_choice_multinom1.6$edf, 
+    food_choice_multinom1.6$deviance / food_choice_multinom1.6$edf)
+
+# two_way_interactions.deviance.table
+
+cat("-----------------------------------------------------------------------\n")
+
+cat("AIC for food_choice_multinom1.6:", VGAM::AIC(food_choice_multinom1.6), "\n")
+cat("BIC for food_choice_multinom1.6:", VGAM::BIC(food_choice_multinom1.6), "\n")
+
+two_way_interactions.AIC_BIC.table[, 7] <- 
+  c(VGAM::AIC(food_choice_multinom1.6), VGAM::BIC(food_choice_multinom1.6))
+
+# two_way_interactions.AIC_BIC.table
+
+```
+
+
+
+```{r}
+
+plot(Effect(c("Lake", "Size"), food_choice_multinom1.6), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect(c("Gender", "Size"), food_choice_multinom1.6), 
+     multiline = TRUE, style = "lines")
+
+```
+
+
+
+```{r}
+
+all_interaction.AIC_BIC.table
+
+cat("-----------------------------------------------------------------------\n")
+
+two_way_interactions.AIC_BIC.table
+
+```
+
+
+
+```{r}
+
+plot(Effect(c("Lake", "Gender", "Size"), food_choice_multinom1), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect(c("Lake", "Gender", "Size"), food_choice_multinom1), 
+     multiline = TRUE, style = "stack")
+
+```
+
+
+
+```{r}
+
+plot(Effect(c("Lake", "Size"), food_choice_multinom1.6), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect(c("Gender", "Size"), food_choice_multinom1.6), 
+     multiline = TRUE, style = "lines")
+
+plot(Effect(c("Lake", "Size"), food_choice_multinom1.6), 
+     multiline = TRUE, style = "stack")
+
+plot(Effect(c("Gender", "Size"), food_choice_multinom1.6), 
+     multiline = TRUE, style = "stack")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 7.2 Nested dichotomies
+```{r}
+# Convert the 4-way table to a dataframe
+food_choice_df <- as.data.frame(food_choice_table)
+
+# Names for the levels based on the table's dimnames (ensuring they match the table)
+names_vector <- dimnames(food_choice_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Primary Food Choice
+combination_df <- expand.grid(names_vector$Lake,
+                              names_vector$Gender,
+                              names_vector$Size,
+                              names_vector$Primary_Food_Choice)
+colnames(combination_df) <- c("Lake", "Gender", "Size", "Primary_Food_Choice")
+
+# Include frequencies from the table in the combination dataframe
+combination_df$Freq <- c(food_choice_table)
+
+# Expand the dataframe based on the 'Freq' column
+expanded_rows <- rep(seq_len(nrow(combination_df)), combination_df$Freq)
+food_choice_df <- combination_df[expanded_rows, 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(food_choice_df) <- NULL
+
+# View the food_choice_df dataframe
+# food_choice_df
+
+food_choice_df <- within(food_choice_df,{
+  Fish <- recode(Primary_Food_Choice, 
+                 "'Fish' = 'yes'; else = 'no'")
+  Invertebrate <- recode(Primary_Food_Choice, 
+                         "'Invertebrate' = 'yes'; 'Fish' = NA; else = 'no'")
+  Reptile <- recode(Primary_Food_Choice, 
+                    "'Reptile' = 'yes'; 'Fish' = NA; 'Invertebrate' = NA; else = 'no'")
+  Bird <- recode(Primary_Food_Choice, 
+                 "'Bird' = 'yes'; 'Fish' = NA; 'Invertebrate' = NA; 'Reptile' = NA; else = 'no'")
+})
+
+food_choice_df
+
+```
+
+
+
+```{r}
+
+mod.fish <- glm(Fish ~ Lake + Gender + Size, family = binomial, 
+                data = food_choice_df)
+summary(mod.fish)
+
+cat("-----------------------------------------------------------------------\n")
+
+mod.invertebrate <- glm(Invertebrate ~ Lake + Gender + Size, family = binomial, 
+                        data = food_choice_df)
+summary(mod.invertebrate)
+
+cat("-----------------------------------------------------------------------\n")
+
+mod.reptile <- glm(Reptile ~ Lake + Gender + Size, family = binomial, 
+                   data = food_choice_df)
+summary(mod.reptile)
+
+cat("-----------------------------------------------------------------------\n")
+
+mod.bird <- glm(Bird ~ Lake + Gender + Size, family = binomial, 
+                data = food_choice_df)
+summary(mod.bird)
+
+```
+
+
+
+```{r}
+
+cbind(Fish = coef(mod.fish), Invertebrate = coef(mod.invertebrate), 
+      Reptile = coef(mod.reptile), Bird = coef(mod.bird))
+
+predictors <- expand.grid(Lake = Lake,Gender = Gender,Size = Size)
+fit <- data.frame(predictors,
+                  p.Fish = predict(mod.fish, predictors, type = "response"),
+                  p.Invertebrate = predict(mod.invertebrate, predictors, type = "response"),
+                  p.Reptile = predict(mod.reptile, predictors, type = "response"),
+                  p.Bird = predict(mod.bird, predictors, type = "response"),
+                  l.Fish = predict(mod.fish, predictors, type = "link"),
+                  l.Invertebrate = predict(mod.invertebrate, predictors, type = "link"), 
+                  l.Reptile = predict(mod.reptile, predictors, type = "link"),
+                  l.Bird = predict(mod.bird, predictors, type = "link")
+)
+
+fit <- within(fit, {
+  `Fish` <- p.Fish
+  `Invertebrate` <- p.Invertebrate * (1 - p.Fish)
+  `Reptile` <- p.Reptile * (1 - p.Fish) * (1 - p.Invertebrate)
+  `Bird` <- p.Bird * (1 - p.Fish) * (1 - p.Invertebrate) * (1 - p.Reptile)
+  `Other` <- (1 - p.Fish) * (1 - p.Invertebrate) * (1 - p.Reptile) * (1 - p.Bird)
+})
+fit
+
+```
+
+
+
+```{r}
+
+fit2 <- melt(fit, id.vars = c("Lake", "Gender", "Size"),
+             measure.vars = c("Fish", "Invertebrate", "Reptile", "Bird", "Other"),
+             variable.name = "Primary_Food_Choice",
+             value.name = "Probability")
+
+gg <- ggplot(fit2, aes(x = Lake, y = Probability, group = Primary_Food_Choice, 
+                       color = Primary_Food_Choice)) + 
+  geom_line() + geom_point() + 
+  facet_grid(Gender ~ Size) + 
+  labs(title = "Probability of Choosing Food Types by Lake",
+       y = "Probability",
+       x = "Lake") + 
+  theme_bw()
+gg
+
+```
+
+
+
+```{r}
+
+fit3 <- melt(fit, id.vars = c("Lake", "Gender", "Size"),
+             measure.vars = c("l.Fish", "l.Invertebrate", "l.Reptile", "l.Bird"),
+             variable.name = "Primary_Food_Choice",
+             value.name = "LogOdds")
+
+gg <- ggplot(fit3, aes(x = Lake, y = LogOdds, color = Primary_Food_Choice, 
+                       group = Primary_Food_Choice)) +
+  geom_line() + geom_point() + 
+  facet_grid(Gender ~ Size) + 
+  labs(title = "Log Odds of Selecting Food Choices by Lake", x = "Lake", y = "Log Odds") +
+  scale_y_continuous(limits = c(-4, 3)) +
+  theme_bw()
+gg
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Tests
+```{r}
+
+1-pchisq(food_choice_multinom0$deviance, df=food_choice_multinom0$edf)
+
+1-pchisq(other.mod2$null.deviance - other.mod2$deviance, 
+         df=other.mod2$df.null - other.mod2$df.residual)
+
+LRstats(other.mod2)
+
+```
+
+
+```{r}
+
+food_choice_multinom0$deviance
+
+food_choice_multinom0$edf
+
+cat("-----------------------------------------------------------------------\n")
+
+food_choice_multinom1$deviance
+
+food_choice_multinom1$edf
+
+cat("-----------------------------------------------------------------------\n")
+
+food_choice_multinom2$deviance
+
+food_choice_multinom2$edf
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+summary(other.mod2)
+
+other.mod2$deviance
+
+other.mod2$df.null
+other.mod2$df.residual
+
+food_choice_multinom0$deviance
+
+food_choice_multinom0$edf
+
+other.mod2$deviance
+
+other.mod2$null.deviance
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,1158 @@
+---
+title: "Stat 530 Project Step 3"
+author: "Yiquan Xiao"
+date: "2024-04-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r import libraries, echo=FALSE}
+# import libraries
+library(vcd)
+library(vcdExtra)
+library(DescTools)
+library(MASS)
+library(gpairs)
+library(ggplot2)
+library(effects)
+library(lmtest)
+library(splines)
+library(car)
+library(carData)
+
+library(gridGraphics)
+library(gridExtra)
+```
+
+
+# Create Dataset
+```{r prepare data}
+# data
+food_choice_data <- c(
+  7, 1, 0, 0, 5,
+  4, 0, 0, 1, 2,
+  16, 3, 2, 2, 3,
+  3, 0, 1, 2, 3,
+  2, 2, 0, 0, 1,
+  13, 7, 6, 0, 0,
+  3, 9, 1, 0, 2,
+  0, 1, 0, 1, 0,
+  3, 7, 1, 0, 1,
+  8, 6, 6, 3, 5,
+  2, 4, 1, 1, 4,
+  0, 1, 0, 0, 0,
+  13, 10, 0, 2, 2,
+  9, 0, 0, 1, 2,
+  3, 9, 1, 0, 1,
+  8, 1, 0, 0, 1
+)
+# variables and corresponding levels
+Lake <- c("Hancock", "Oklawaha", "Trafford", "George")
+Gender <- c("Male", "Female")
+Size <- c("<= 2.3", "> 2.3")
+Primary_Food_Choice <- c("Fish", "Invertebrate", "Reptile", "Bird", "Other")
+
+# make it 4d array
+food_choice_array <- array(food_choice_data, dim = c(4, 2, 2, 5),
+                           dimnames = list(Lake = Lake,
+                                           Gender = Gender,
+                                           Size = Size,
+                                           Primary_Food_Choice = Primary_Food_Choice))
+
+# make 4-way table
+food_choice_table <- as.table(food_choice_array)
+ftable(food_choice_table)
+```
+
+
+# Log-linear Models
+```{r}
+food_choice_df <- as.data.frame(food_choice_table)
+
+# baseline model: [Food][Lake Gender Size]
+glm_base <- glm(Freq ~ Primary_Food_Choice + Lake * Gender * Size, 
+                data = food_choice_df, family = "poisson")
+LRstats(glm_base)
+
+mosaic(glm_base, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food][Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+
+mosaic(glm_base, shade = TRUE, formula = ~  Primary_Food_Choice + Size + Lake + Gender, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food][Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+```
+
+LRstats shows that current model is not acceptable. 
+From mosaic display, we can see primary food choices of alligators vary among lakes --> association between Food and Lake
+
+
+```{r}
+# [Food Lake][Lake Gender Size]
+glm_next1 <- glm(Freq ~ Primary_Food_Choice * Lake + Lake * Gender * Size, 
+                 data = food_choice_df, family = "poisson")
+
+LRstats(glm_next1)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_base, glm_next1, test = "Chisq")
+
+mosaic(glm_next1, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake][Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+```
+
+anova confirms that there is an association between Food and Lake. 
+LRstats shows that current model is not acceptable. 
+
+
+```{r}
+# [Food Lake][Food Size][Lake Gender Size]
+glm_next2.1 <- glm(Freq ~ Primary_Food_Choice * (Lake + Size) + Lake * Gender * Size, 
+                   data = food_choice_df, family = "poisson")
+
+LRstats(glm_next2.1)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next1, glm_next2.1, test = "Chisq")
+
+mosaic(glm_next2.1, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake][Food Size][Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+```
+
+
+```{r}
+# [Food Lake Size][Lake Gender Size]
+glm_next2.2 <- glm(Freq ~ Primary_Food_Choice * Lake * Size + Lake * Gender * Size, 
+                   data = food_choice_df, family = "poisson")
+
+LRstats(glm_next2.2)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next2.1, glm_next2.2, test = "Chisq")
+
+mosaic(glm_next2.2, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake Size][Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+
+mosaic(glm_next2.2, shade = TRUE, formula = ~ Lake + Primary_Food_Choice + Size + Gender, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake Size][Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+```
+
+
+
+
+
+
+```{r}
+# [Food Lake Size][Food Gender][Lake Gender Size]
+glm_next3.1 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Gender) + Lake * Gender * Size, 
+                   data = food_choice_df, family = "poisson")
+
+LRstats(glm_next3.1)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next2.2, glm_next3.1, test = "Chisq")
+
+mosaic(glm_next3.1, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake Size][Food Gender][Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+```
+
+
+```{r}
+# [Food Lake Size][Food Lake Gender][Lake Gender Size]
+glm_next3.2 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Lake * Gender) 
+                   + Lake * Gender * Size, 
+                   data = food_choice_df, family = "poisson")
+
+LRstats(glm_next3.2)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next3.1, glm_next3.2, test = "Chisq")
+
+mosaic(glm_next3.2, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake Size][Food Lake Gender][Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+```
+
+
+
+```{r}
+# [Food Lake Size][Food Gender Size][Lake Gender Size]
+glm_next3.3 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Gender * Size) 
+                   + Lake * Gender * Size, 
+                   data = food_choice_df, family = "poisson")
+
+LRstats(glm_next3.3)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next3.3, glm_next3.2, test = "Chisq")
+
+cat("--------------------------------------------------------------------\n")
+
+loglm_next3.2 <- loglm(~ ~ Primary_Food_Choice * (Lake * Size + Lake * Gender) 
+                       + Lake * Gender * Size, 
+                       data = food_choice_table)
+
+loglm_next3.3 <- loglm(~ Primary_Food_Choice * (Lake * Size + Gender * Size) 
+                       + Lake * Gender * Size, 
+                       data = food_choice_table)
+
+anova(loglm_next3.3, loglm_next3.2, test = "Chisq")
+
+mosaic(glm_next3.3, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake Size][Food Gender Size][Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+```
+
+
+```{r}
+# [Food Lake Gender Size]
+glm_sat <- glm(Freq ~ Primary_Food_Choice * Lake * Gender * Size, 
+                   data = food_choice_df, family = "poisson")
+
+LRstats(glm_sat)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next3.3, glm_sat, test = "Chisq")
+
+mosaic(glm_sat, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+
+```
+
+
+```{r}
+# [Food Lake Size][Food Gender Size]
+glm_next4.1 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Gender * Size), 
+                   data = food_choice_df, family = "poisson")
+
+LRstats(glm_next4.1)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next4.1, glm_next3.3, test = "Chisq")
+
+mosaic(glm_next4.1, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake Size][Food Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+```
+
+
+```{r}
+# [Food Lake Size][Food Gender Size][Lake Gender]
+glm_next4.2 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Gender * Size) + Lake * Gender, 
+                   data = food_choice_df, family = "poisson")
+
+LRstats(glm_next4.2)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next4.2, glm_next3.3, test = "Chisq")
+
+mosaic(glm_next4.2, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4),
+       main = "Model: [Food Lake Size][Food Gender Size][Lake Gender]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+```
+
+
+```{r}
+food_choice_df <- within(food_choice_df,
+                         {
+                           FO_LH_GF_SG <-
+                             (Primary_Food_Choice == "Other") *
+                             (Lake == "Hancock") *
+                             (Gender == "Female") *
+                             (Size == "> 2.3")
+                         }
+)
+
+
+glm_next4.2.1 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Gender * Size) 
+                     + Lake * Gender 
+                     + FO_LH_GF_SG, 
+                     data = food_choice_df, family = "poisson")
+
+LRstats(glm_next4.2.1)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next4.2, glm_next4.2.1, test = "Chisq")
+
+mosaic(glm_next4.2.1, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4),
+       # main = "Model: [Food Lake Size][Food Gender Size][Lake Gender]", 
+       main = "Model: [FLS][FGS][LG] with 1 extra term", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+
+```
+
+
+```{r}
+food_choice_df <- within(food_choice_df,
+                         {
+                           FI_LH_GF_SL <-
+                             (Primary_Food_Choice == "Invertebrate") *
+                             (Lake == "Hancock") *
+                             (Gender == "Female") *
+                             (Size == "<= 2.3")
+                         }
+)
+
+food_choice_df <- within(food_choice_df,
+                         {
+                           FF_LH_GF_SG <-
+                             (Primary_Food_Choice == "Fish") *
+                             (Lake == "Hancock") *
+                             (Gender == "Female") *
+                             (Size == "> 2.3")
+                         }
+)
+
+
+glm_next4.2.2 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Gender * Size) 
+                     + Lake * Gender 
+                     + FO_LH_GF_SG 
+                     + FI_LH_GF_SL 
+                     + FF_LH_GF_SG, 
+                     data = food_choice_df, family = "poisson")
+
+LRstats(glm_next4.2.2)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next4.2.1, glm_next4.2.2, test = "Chisq")
+
+mosaic(glm_next4.2.2, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4),
+       main = "Model: [FLS][FGS][LG] with 3 extra term", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+
+```
+
+
+```{r}
+food_choice_df <- within(food_choice_df,
+                         {
+                           FI_LO_GF_SL <-
+                             (Primary_Food_Choice == "Invertebrate") *
+                             (Lake == "Oklawaha") *
+                             (Gender == "Female") *
+                             (Size == "<= 2.3")
+                         }
+)
+
+food_choice_df <- within(food_choice_df,
+                         {
+                           FF_LO_GF_SG <-
+                             (Primary_Food_Choice == "Fish") *
+                             (Lake == "Oklawaha") *
+                             (Gender == "Female") *
+                             (Size == "> 2.3")
+                         }
+)
+
+
+glm_next4.2.3 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Gender * Size) 
+                     + Lake * Gender 
+                     + FO_LH_GF_SG 
+                     + FI_LH_GF_SL 
+                     + FF_LH_GF_SG
+                     + FI_LO_GF_SL 
+                     + FF_LO_GF_SG, 
+                     data = food_choice_df, family = "poisson")
+
+LRstats(glm_next4.2.3)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next4.2.2, glm_next4.2.3, test = "Chisq")
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next4.2.3, glm_sat, test = "Chisq")
+
+mosaic(glm_next4.2.3, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4),
+       main = "Model: [FLS][FGS][LG] with 5 extra term (Final Model)", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+
+```
+
+
+```{r}
+food_choice_df <- within(food_choice_df,
+                         {
+                           FO_LO_GM_SL <-
+                             (Primary_Food_Choice == "Other") *
+                             (Lake == "Oklawaha") *
+                             (Gender == "Male") *
+                             (Size == "<= 2.3")
+                         }
+)
+food_choice_df <- within(food_choice_df,
+                         {
+                           FI_LG_GF_SG <-
+                             (Primary_Food_Choice == "Invertebrate") *
+                             (Lake == "George") *
+                             (Gender == "Female") *
+                             (Size == "> 2.3")
+                         }
+)
+
+food_choice_df <- within(food_choice_df,
+                         {
+                           FI_LO_GF_SG <-
+                             (Primary_Food_Choice == "Invertebrate") *
+                             (Lake == "Oklawaha") *
+                             (Gender == "Female") *
+                             (Size == "> 2.3")
+                         }
+)
+
+glm_next4.1.1 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Gender * Size) 
+                     + FO_LO_GM_SL 
+                     + FI_LG_GF_SG 
+                     + FI_LO_GF_SG, 
+                     data = food_choice_df, family = "poisson")
+
+LRstats(glm_next4.1.1)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next4.1, glm_next4.1.1, test = "Chisq")
+
+mosaic(glm_next4.1.1, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake Size][Food Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+
+```
+
+
+```{r}
+food_choice_df <- within(food_choice_df,
+                          {
+                            FO_LH_GM_SL <-
+                              (Primary_Food_Choice == "Other") *
+                              (Lake == "Hancock") *
+                              (Gender == "Male") *
+                              (Size == "<= 2.3")
+                          }
+)
+
+glm_next4.1.2 <- glm(Freq ~ Primary_Food_Choice * (Lake * Size + Gender * Size) 
+                     + FO_LO_GM_SL 
+                     + FI_LG_GF_SG 
+                     + FI_LO_GF_SG 
+                     + FO_LH_GM_SL, 
+                     data = food_choice_df, family = "poisson")
+
+LRstats(glm_next4.1.2)
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next4.1.1, glm_next4.1.2, test = "Chisq")
+
+cat("--------------------------------------------------------------------\n")
+
+anova(glm_next4.1.2, glm_next4.2.3, test = "Chisq")
+
+mosaic(glm_next4.1.2, shade = TRUE, formula = ~ Primary_Food_Choice + Lake + Gender + Size, 
+       split = TRUE,
+       # residuals_type = "rstandard", 
+       # gp = shading_Friendly, 
+       # gp_args = list(interpolate = 1 : 4), 
+       main = "Model: [Food Lake Size][Food Gender Size]", 
+       abbreviate_labs = c(Primary_Food_Choice = TRUE, 
+                           Lake = TRUE, Gender = TRUE, Size = TRUE),
+       keep_aspect_ratio = FALSE)
+
+```
+
+
+
+# Logistic Regression
+
+## Response: Fish
+```{r}
+
+fish_data <- food_choice_array[, , , 1]
+not_fish_data <- apply(food_choice_array[, , , -1], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_fish_data, fish_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Fish = c("Not Fish", "Fish")
+)
+
+fish_table <- as.table(new_food_choice_data)
+ftable(fish_table)
+
+```
+
+
+```{r turn to case dfm}
+
+# Convert table to dataframe
+fish_dfm <- as.data.frame(fish_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(fish_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Fish
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(fish_table)
+
+# Expand the dataframe based on the 'Freq' column
+fish_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(fish_dfm) <- NULL
+
+# View the fish_dfm dataframe
+fish_dfm
+
+```
+
+
+
+```{r}
+
+fish.mod0 <- glm(Fish ~ Lake + Gender + Size,
+                 data = fish_dfm, family =binomial)
+Anova(fish.mod0)
+
+cat("-----------------------------------------------------------------------\n")
+
+fish.mod1 <- glm(Fish ~ (Lake + Gender + Size)^2,
+                 data = fish_dfm, family =binomial)
+Anova(fish.mod1)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(fish.mod0, fish.mod1, test = "Chisq")
+
+cat("=======================================================================\n")
+
+fish.mod2 <- glm(Fish ~ Lake * Gender * Size,
+                 data = fish_dfm, family =binomial)
+Anova(fish.mod2)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(fish.mod1, fish.mod2, test = "Chisq")
+
+cat("=======================================================================\n")
+
+LRstats(fish.mod1)
+```
+
+
+```{r}
+
+fish.mod3 <- glm(Fish ~ Lake * Size + Gender,
+                 data = fish_dfm, family =binomial)
+Anova(fish.mod3)
+
+cat("=======================================================================\n")
+
+LRstats(fish.mod3)
+
+cat("=======================================================================\n")
+
+anova(fish.mod3, fish.mod1, test = "Chisq")
+```
+
+
+```{r}
+coeftest(fish.mod3)
+```
+
+
+```{r}
+fish.eff3 <- allEffects(fish.mod3)
+
+plot(fish.eff3, rows = 1, cols = 2, type="response")
+```
+
+
+```{r}
+plot_list <- list()
+
+plot(Effect("Gender", fish.mod3), lwd = 3, multiline = TRUE, ci.style = "bands",
+     type="response",  xlab = "Gender", ylab = "Fish", 
+     key.args = list(x = .05, y = .99, cex = 1.2, columns = 1))
+plot_list[[1]] <- grid.grab(wrap.grobs = TRUE)
+
+plot(Effect(c("Lake", "Size"), fish.mod3), lwd = 3, multiline = TRUE, ci.style = "bands", 
+     type="response",  xlab = "Lake", ylab = "Fish", ylim = c(-0.05, 0.8), 
+     key.args = list(x = .05, y = .99, cex = 1.2, columns = 1))
+plot_list[[2]] <- grid.grab(wrap.grobs = TRUE)
+
+grid.arrange(grobs = plot_list, ncol = 2, nrow = 1)
+```
+
+
+
+## Response: Invertabrate
+```{r}
+
+invertebrate_data <- food_choice_array[, , , 2]
+not_invertebrate_data <- apply(food_choice_array[, , , -2], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_invertebrate_data, invertebrate_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Invertebrate = c("Not Invertebrate", "Invertebrate")
+)
+
+invertebrate_table <- as.table(new_food_choice_data)
+ftable(invertebrate_table)
+
+```
+
+
+```{r turn to case dfm}
+
+# Convert table to dataframe
+invertebrate_dfm <- as.data.frame(invertebrate_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(invertebrate_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Invertebrate
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(invertebrate_table)
+
+# Expand the dataframe based on the 'Freq' column
+invertebrate_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(invertebrate_dfm) <- NULL
+
+# View the invertebrate_dfm dataframe
+invertebrate_dfm
+
+```
+
+
+```{r}
+
+invertebrate.mod0 <- glm(Invertebrate ~ Lake + Gender + Size,
+                         data = invertebrate_dfm, family = "binomial")
+Anova(invertebrate.mod0)
+
+cat("-----------------------------------------------------------------------\n")
+
+invertebrate.mod1 <- glm(Invertebrate ~ (Lake + Gender + Size)^2,
+                         data = invertebrate_dfm, family = "binomial")
+Anova(invertebrate.mod1)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(invertebrate.mod0, invertebrate.mod1, test = "Chisq")
+
+cat("=======================================================================\n")
+
+invertebrate.mod2 <- glm(Invertebrate ~ Lake * Gender * Size,
+                         data = invertebrate_dfm, family = "binomial")
+Anova(invertebrate.mod2)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(invertebrate.mod0, invertebrate.mod2, test = "Chisq")
+
+cat("=======================================================================\n")
+
+LRstats(invertebrate.mod2)
+```
+
+
+```{r}
+coeftest(invertebrate.mod2)
+```
+
+
+```{r}
+invertebrate.eff2 <- allEffects(invertebrate.mod2)
+
+plot(invertebrate.eff2, rows = 1, cols = 1, type="response")
+```
+
+
+```{r}
+
+plot(Effect(c("Lake", "Gender", "Size"), invertebrate.mod2), lwd = 3, 
+     multiline = TRUE, ci.style = "bands", 
+     type="response",  xlab = "Lake", ylab = "Invertebrate", ylim = c(-0.05, 0.7), 
+     key.args = list(x = .05, y = .95, cex = 1.2, columns = 1))
+
+```
+
+
+## Response: Reptile
+```{r}
+
+reptile_data <- food_choice_array[, , , 3]
+not_reptile_data <- apply(food_choice_array[, , , -3], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_reptile_data, reptile_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Reptile = c("Not Reptile", "Reptile")
+)
+
+reptile_table <- as.table(new_food_choice_data)
+ftable(reptile_table)
+
+```
+
+
+```{r turn to case dfm}
+
+# Convert table to dataframe
+reptile_dfm <- as.data.frame(reptile_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(reptile_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Reptile
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(reptile_table)
+
+# Expand the dataframe based on the 'Freq' column
+reptile_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(reptile_dfm) <- NULL
+
+# View the reptile_dfm dataframe
+reptile_dfm
+
+```
+
+
+```{r}
+
+reptile.mod0 <- glm(Reptile ~ Lake + Gender + Size,
+                    data = reptile_dfm, family = "binomial")
+Anova(reptile.mod0)
+
+cat("-----------------------------------------------------------------------\n")
+
+reptile.mod1 <- glm(Reptile ~ (Lake + Gender + Size)^2,
+                    data = reptile_dfm, family = "binomial")
+Anova(reptile.mod1)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(reptile.mod0, reptile.mod1, test = "Chisq")
+
+cat("=======================================================================\n")
+
+reptile.mod2 <- glm(Reptile ~ Lake * Gender * Size,
+                    data = reptile_dfm, family = "binomial")
+Anova(reptile.mod2)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(reptile.mod1, reptile.mod2, test = "Chisq")
+
+cat("=======================================================================\n")
+
+LRstats(reptile.mod1)
+
+```
+
+
+```{r}
+reptile.mod3 <- glm(Reptile ~ Lake * Gender + Lake * Size,
+                    data = reptile_dfm, family =binomial)
+Anova(reptile.mod3)
+
+cat("=======================================================================\n")
+
+LRstats(reptile.mod3)
+
+cat("=======================================================================\n")
+
+anova(reptile.mod3, reptile.mod1, test = "Chisq")
+```
+
+
+```{r}
+coeftest(reptile.mod3)
+```
+
+
+```{r}
+reptile.eff3 <- allEffects(reptile.mod3)
+
+plot(reptile.eff3, rows = 1, cols = 2, type="response")
+```
+
+
+```{r}
+plot_list <- list()
+
+plot(Effect(c("Gender", "Lake"), reptile.mod3), lwd = 3, multiline = TRUE, ci.style = "bands", 
+     type="response",  xlab = "Lake", ylab = "Reptile", ylim = c(-0.05, 0.5), 
+     key.args = list(x = .05, y = .99, cex = 1.2, columns = 1))
+plot_list[[1]] <- grid.grab(wrap.grobs = TRUE)
+
+plot(Effect(c("Size", "Lake"), reptile.mod3), lwd = 3, multiline = TRUE, ci.style = "bands", 
+     type="response",  xlab = "Lake", ylab = "Reptile", ylim = c(-0.05, 0.5), 
+     key.args = list(x = .05, y = .99, cex = 1.2, columns = 1))
+plot_list[[2]] <- grid.grab(wrap.grobs = TRUE)
+
+grid.arrange(grobs = plot_list, ncol = 2, nrow = 1)
+
+```
+
+
+## Response: Bird
+```{r}
+
+bird_data <- food_choice_array[, , , 4]
+not_bird_data <- apply(food_choice_array[, , , -4], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_bird_data, bird_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Bird = c("Not Bird", "Bird")
+)
+
+bird_table <- as.table(new_food_choice_data)
+ftable(bird_table)
+
+```
+
+
+```{r turn to case dfm}
+
+# Convert table to dataframe
+bird_dfm <- as.data.frame(bird_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(bird_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Bird
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(bird_table)
+
+# Expand the dataframe based on the 'Freq' column
+bird_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(bird_dfm) <- NULL
+
+# View the bird_dfm dataframe
+bird_dfm
+
+```
+
+
+```{r}
+
+bird.mod0 <- glm(Bird ~ Lake + Gender + Size,
+                 data = bird_dfm, family =binomial)
+Anova(bird.mod0)
+
+cat("-----------------------------------------------------------------------\n")
+
+bird.mod1 <- glm(Bird ~ (Lake + Gender + Size)^2,
+                 data = bird_dfm, family =binomial)
+Anova(bird.mod1)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(bird.mod0, bird.mod1, test = "Chisq")
+
+cat("=======================================================================\n")
+
+bird.mod2 <- glm(Bird ~ Lake * Gender * Size,
+                 data = bird_dfm, family =binomial)
+Anova(bird.mod2)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(bird.mod1, bird.mod2, test = "Chisq")
+
+cat("=======================================================================\n")
+
+LRstats(bird.mod1)
+```
+
+
+```{r}
+bird.mod3 <- glm(Bird ~ Lake * Size + Gender * Size,
+                 data = bird_dfm, family =binomial)
+Anova(bird.mod3)
+
+cat("=======================================================================\n")
+
+LRstats(bird.mod3)
+
+cat("=======================================================================\n")
+
+anova(bird.mod3, bird.mod1, test = "Chisq")
+```
+
+
+```{r}
+coeftest(bird.mod3)
+```
+
+
+```{r}
+bird.eff3 <- allEffects(bird.mod3)
+
+plot(bird.eff3, rows = 1, cols = 2, type="response")
+```
+
+
+```{r}
+plot_list <- list()
+
+plot(Effect(c("Size", "Lake"), bird.mod3), lwd = 3, multiline = TRUE, ci.style = "bands", 
+     type="response",  xlab = "Lake", ylab = "Bird", ylim = c(-0.05, 0.6), 
+     key.args = list(x = .05, y = .99, cex = 1.2, columns = 1))
+plot_list[[1]] <- grid.grab(wrap.grobs = TRUE)
+
+plot(Effect(c("Size", "Gender"), bird.mod3), lwd = 3, multiline = TRUE, ci.style = "bands", 
+     type="response",  xlab = "Size", ylab = "Bird", ylim = c(-0.05, 0.6), 
+     key.args = list(x = .05, y = .99, cex = 1.2, columns = 1))
+plot_list[[2]] <- grid.grab(wrap.grobs = TRUE)
+
+grid.arrange(grobs = plot_list, ncol = 2, nrow = 1)
+
+```
+
+
+## Response: Other
+```{r}
+
+other_data <- food_choice_array[, , , 5]
+not_other_data <- apply(food_choice_array[, , , -5], c(1, 2, 3), sum)
+
+new_food_choice_data <- array(c(not_other_data, other_data), dim = c(4, 2, 2, 2))
+dimnames(new_food_choice_data) <- list(
+  Lake = c("Hancock", "Oklawaha", "Trafford", "George"),
+  Gender = c("Male", "Female"),
+  Size = c("<= 2.3", "> 2.3"),
+  Other = c("Not Other", "Other")
+)
+
+other_table <- as.table(new_food_choice_data)
+ftable(other_table)
+
+```
+
+
+```{r turn to case dfm}
+
+# Convert table to dataframe
+other_dfm <- as.data.frame(other_table)
+
+# Names for expanding grid based on the table's dimnames
+names_vector <- dimnames(other_table)
+
+# Create all possible combinations of Lake, Gender, Size, and Other
+combination_df <- expand.grid(names_vector)
+
+# Include frequencies from the table
+combination_df$Freq <- c(other_table)
+
+# Expand the dataframe based on the 'Freq' column
+other_dfm <- combination_df[rep(seq_len(nrow(combination_df)), combination_df$Freq), 1:4]  # Exclude the Freq column
+
+# Reset row names to avoid duplicate row names
+row.names(other_dfm) <- NULL
+
+# View the other_dfm dataframe
+other_dfm
+
+```
+
+
+```{r}
+
+other.mod0 <- glm(Other ~ Lake + Gender + Size,
+                  data = other_dfm, family =binomial)
+Anova(other.mod0)
+
+cat("-----------------------------------------------------------------------\n")
+
+other.mod1 <- glm(Other ~ (Lake + Gender + Size)^2,
+                  data = other_dfm, family =binomial)
+Anova(other.mod1)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(other.mod0, other.mod1, test = "Chisq")
+
+cat("=======================================================================\n")
+
+other.mod2 <- glm(Other ~ Lake * Gender * Size,
+                  data = other_dfm, family =binomial)
+Anova(other.mod2)
+
+cat("-----------------------------------------------------------------------\n")
+
+anova(other.mod1, other.mod2, test = "Chisq")
+
+cat("=======================================================================\n")
+
+LRstats(other.mod2)
+
+```
+
+
+```{r}
+coeftest(other.mod2)
+```
+
+
+```{r}
+other.eff2 <- allEffects(other.mod2)
+
+plot(other.eff2, rows = 1, cols = 1, type="response")
+```
+
+
+```{r}
+
+plot(Effect(c("Gender", "Size", "Lake"), other.mod2), lwd = 3, 
+     multiline = TRUE, ci.style = "bands", 
+     type="response",  xlab = "Lake", ylab = "Other", ylim = c(-0.05, 1.05), 
+     key.args = list(x = .05, y = .95, cex = 1.2, columns = 1))
+
+```
+
+
+
+
+
